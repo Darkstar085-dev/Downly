@@ -1,12 +1,13 @@
-# Add project specific R8 rules here.
-# AGP will combine all keep rule files in src/main/keepRules to pass to R8
-#
-# For more details, see
-#   https://d.android.com/r/tools/r8/keep-rules
+# Project-specific rules for classes accessed by reflection.
+# Dependency-provided consumer rules are applied automatically by R8.
+# Avoid broad keep rules to retain effective code shrinking.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+-keepattributes Signature,*Annotation*
+
+# Kotlin metadata may be inspected by reflection in runtime dependencies.
+-keep class kotlin.Metadata { *; }
+
+# Published yt-dlp wrappers/native helpers may be resolved by class name.
+-keep class com.sipun.youtubedl_android.** { *; }
+-keep class com.sipun.ffmpeg.** { *; }
+-keep class com.sipun.aria2c.** { *; }

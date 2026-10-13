@@ -13,5 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
-*.jks
+/.idea
+/.kotlin
 /keystore.properties
+*.jks
+*.keystore

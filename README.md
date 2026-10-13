@@ -64,3 +64,16 @@ Downloads are stored in app-specific storage under `Android/data/com.sipun.downl
 - Downloads currently run in the app process; Android may stop them if the process is killed. Persistent background downloads require a foreground service or an equivalent durable-work implementation.
 - The app-specific download folder may not be directly browsable by every file manager. Use Android's app storage tools or an appropriate file-sharing flow to access saved files.
 - A fresh-clone Gradle build and test run has not yet been verified for this repository.
+
+## Local release signing and optimized builds
+
+Release signing credentials are loaded from a local `keystore.properties` file at the repository root, with environment-variable fallback. This file and local keystore files are ignored by Git; never commit real passwords or a private JKS.
+
+1. Copy `keystore.properties.example` to `keystore.properties`.
+2. Fill in the real `storeFile`, `storePassword`, `keyAlias`, and `keyPassword` values.
+3. Put the JKS at the local path set by `storeFile` (relative paths are resolved from the repository root).
+4. Build a signed release with `./gradlew :app:assembleRelease`; use `./gradlew :app:bundleRelease` for an AAB.
+
+A release build requires valid local signing credentials; no real keystore or secret is checked into the repository. Environment-variable alternatives are `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
+
+The release variant enables R8 minification/obfuscation and resource shrinking using the optimized Android default rules plus `app/proguard-rules.pro`. Test the release build on a device before distribution, especially the native yt-dlp/FFmpeg runtime paths.

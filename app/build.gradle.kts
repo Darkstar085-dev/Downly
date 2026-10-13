@@ -1,7 +1,21 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+val signingPropertiesFile = rootProject.file("keystore.properties")
+val signingProperties = Properties().apply {
+    if (signingPropertiesFile.exists()) {
+        signingPropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun signingValue(propertyName: String, environmentName: String): String? =
+    signingProperties.getProperty(propertyName)
+        ?.takeIf { it.isNotBlank() }
+        ?: System.getenv(environmentName)?.takeIf { it.isNotBlank() }
 
 android {
     namespace = "com.sipun.downly"
@@ -29,12 +43,33 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = signingValue("storeFile", "ANDROID_KEYSTORE_FILE")
+            val storePass = signingValue("storePassword", "ANDROID_KEYSTORE_PASSWORD")
+            val alias = signingValue("keyAlias", "ANDROID_KEY_ALIAS")
+            val keyPass = signingValue("keyPassword", "ANDROID_KEY_PASSWORD")
+
+            if (keystorePath != null) storeFile = rootProject.file(keystorePath)
+            if (storePass != null) storePassword = storePass
+            if (alias != null) keyAlias = alias
+            if (keyPass != null) keyPassword = keyPass
+        }
+    }
+
     buildTypes {
+        debug {
+            // Keep Android's normal debug signing.
+        }
+
         release {
-            optimization {
-                enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
-            }
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 

@@ -1,0 +1,45 @@
+package com.sipun.downly.data
+
+import java.util.UUID
+
+enum class MediaMode { VIDEO, AUDIO }
+enum class DownloadStatus { QUEUED, DOWNLOADING, COMPLETE, FAILED, CANCELLED }
+
+data class DownloadRecord(
+    val id: String = UUID.randomUUID().toString(),
+    val url: String,
+    val title: String,
+    val status: DownloadStatus,
+    val progress: Float = 0f,
+    val detail: String = "Queued",
+    val filePath: String? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class QualityOption(val quality: String, val height: Int, val estimatedBytes: Long?)
+data class AudioOption(val formatId: String, val quality: String, val bitrate: Int, val estimatedBytes: Long?)
+
+data class MediaPreview(
+    val title: String,
+    val uploader: String,
+    val duration: String,
+    val url: String,
+    val thumbnailUrl: String? = null,
+    val qualityOptions: List<QualityOption> = emptyList(),
+    val audioOptions: List<AudioOption> = emptyList()
+)
+
+data class ScreenState(
+    val url: String = "",
+    val initialized: Boolean = false,
+    val busy: Boolean = false,
+    val message: String = "Starting downloader…",
+    val preview: MediaPreview? = null,
+    val mode: MediaMode = MediaMode.VIDEO,
+    val quality: String = "Smart",
+    val connectionType: String = "Checking connection…",
+    val recommendedQuality: String = "480p",
+    val tab: Int = 0,
+    val history: List<DownloadRecord> = emptyList(),
+    val themeMode: String = "System"
+)

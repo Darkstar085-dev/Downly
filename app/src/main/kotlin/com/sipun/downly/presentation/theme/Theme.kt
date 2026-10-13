@@ -1,4 +1,4 @@
-package com.sipun.downly.ui.theme
+package com.sipun.downly.presentation.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape

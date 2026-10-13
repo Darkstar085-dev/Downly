@@ -1,8 +1,7 @@
-package com.sipun.downly.ui.theme
+package com.sipun.downly.presentation.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Downly's green identity and supporting Material 3 tones.
 val Purple80 = Color(0xFF79D8B0)
 val PurpleGrey80 = Color(0xFFB3CCBF)
 val Pink80 = Color(0xFFB9D8C9)

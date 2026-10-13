@@ -54,12 +54,12 @@ Downloads are stored in app-specific storage under `Android/data/com.sipun.downl
 
 ## Notes
 
-- Availability depends on the source site's support in the bundled yt-dlp runtime and may change as sites change.
+- Availability depends on the source site's support in the bundled yt-dlp libraries and may change as sites change.
 - Some media may require authentication or may be unavailable.
 - Download only media you own or are authorized to save, and follow the source platform's terms.
 - The repository intentionally does not include an automatic GitHub Actions build workflow.
 
-## Runtime limitations
+## Download limitations
 
 - Downloads currently run in the app process; Android may stop them if the process is killed. Persistent background downloads require a foreground service or an equivalent durable-work implementation.
 - The app-specific download folder may not be directly browsable by every file manager. Use Android's app storage tools or an appropriate file-sharing flow to access saved files.
@@ -76,4 +76,4 @@ Release signing credentials are loaded from a local `keystore.properties` file a
 
 A release build requires valid local signing credentials; no real keystore or secret is checked into the repository. Environment-variable alternatives are `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
 
-The release variant enables R8 minification/obfuscation and resource shrinking using the optimized Android default rules plus `app/proguard-rules.pro`. Test the release build on a device before distribution, especially the native yt-dlp/FFmpeg runtime paths.
+The release variant enables R8 minification/obfuscation and resource shrinking using the optimized Android default rules plus `app/proguard-rules.pro`. Test the release build on a device before distribution, especially the native yt-dlp/FFmpeg library paths.

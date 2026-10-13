@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.ViewModel
+import com.sipun.downly.runtime.RuntimeBundleInstaller
 import com.sipun.downly.data.DownloadRecord
 import com.sipun.downly.data.DownloadStatus
 import com.sipun.downly.data.MediaMode
@@ -26,6 +27,7 @@ import com.sipun.youtubedl_android.YoutubeDL
 import com.sipun.youtubedl_android.YoutubeDLRequest
 import com.sipun.youtubedl_android.mapper.VideoInfo
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -75,10 +77,79 @@ class DownlyViewModel : ViewModel() {
 
     fun initialize() {
         if (_state.value.initialized || _state.value.busy) return
-        mutate { copy(busy = true, message = "Preparing downloader runtime…") }
+        mutate { copy(busy = true, message = "Preparing Libraries…") }
         worker.execute {
             val context = appContext ?: return@execute
             try {
+                mutate { copy(message = "Downloading Libraries archive…") }
+                val runtimeDir = RuntimeBundleInstaller.ensureInstalled(context)
+                com.sipun.ffmpeg.FFmpeg.setRuntimeArchiveDirectory(runtimeDir)
+                com.sipun.aria2c.Aria2c.setRuntimeArchiveDirectory(runtimeDir)
+                YoutubeDL.setRuntimeArchiveDirectory(runtimeDir)
+                val baseDir = File(context.noBackupFilesDir, "youtubedl-android")
+                val packagesDir = File(baseDir, "packages")
+
+                val pythonArchive = File(runtimeDir, "libpython.zip.so")
+                if (pythonArchive.isFile) {
+                    val pythonDir = File(packagesDir, "python")
+                    val version = com.sipun.youtubedl_common.utils.RuntimeArchiveUtils.sha256(pythonArchive)
+                    val root = File(pythonDir, "usr/lib")
+                    val versions = root.listFiles()?.filter {
+                        it.isDirectory && it.name.matches(Regex("python3\\.\\d+"))
+                    }.orEmpty()
+                    val isValid = versions.any { File(it, "encodings/__init__.py").isFile }
+                    if (!isValid || version != com.sipun.youtubedl_common.SharedPrefsHelper[context, "pythonLibVersion"]) {
+                        com.sipun.youtubedl_common.utils.RuntimeArchiveUtils.installArchive(pythonArchive, pythonDir) { staged ->
+                            val rootStaged = File(staged, "usr/lib")
+                            val versionsStaged = rootStaged.listFiles()?.filter {
+                                it.isDirectory && it.name.matches(Regex("python3\\.\\d+"))
+                            }.orEmpty()
+                            if (!versionsStaged.any { File(it, "encodings/__init__.py").isFile }) {
+                                throw IOException("Python runtime archive is missing its standard library")
+                            }
+                        }
+                        com.sipun.youtubedl_common.SharedPrefsHelper.update(context, "pythonLibVersion", version)
+                    }
+                }
+
+                val ffmpegArchive = File(runtimeDir, "libffmpeg.zip.so")
+                if (ffmpegArchive.isFile) {
+                    val ffmpegDir = File(packagesDir, "ffmpeg")
+                    val version = com.sipun.youtubedl_common.utils.RuntimeArchiveUtils.sha256(ffmpegArchive)
+                    val libraryDirectory = File(ffmpegDir, "usr/lib")
+                    val needsInstall = !libraryDirectory.isDirectory ||
+                        libraryDirectory.list()?.isEmpty() != false ||
+                        version != com.sipun.youtubedl_common.SharedPrefsHelper[context, "ffmpegLibVersion"]
+                    if (needsInstall) {
+                        com.sipun.youtubedl_common.utils.RuntimeArchiveUtils.installArchive(ffmpegArchive, ffmpegDir) { staged ->
+                            val stagedLibraries = File(staged, "usr/lib")
+                            if (!stagedLibraries.isDirectory || stagedLibraries.list()?.isEmpty() != false) {
+                                throw IOException("FFmpeg archive contains no runtime libraries")
+                            }
+                        }
+                        com.sipun.youtubedl_common.SharedPrefsHelper.update(context, "ffmpegLibVersion", version)
+                    }
+                }
+
+                val aria2cArchive = File(runtimeDir, "libaria2c.zip.so")
+                if (aria2cArchive.isFile) {
+                    val aria2cDir = File(packagesDir, "aria2c")
+                    val version = com.sipun.youtubedl_common.utils.RuntimeArchiveUtils.sha256(aria2cArchive)
+                    val libraryDirectory = File(aria2cDir, "usr/lib")
+                    val needsInstall = !libraryDirectory.isDirectory ||
+                        libraryDirectory.list()?.isEmpty() != false ||
+                        version != com.sipun.youtubedl_common.SharedPrefsHelper[context, "aria2cLibVersion"]
+                    if (needsInstall) {
+                        com.sipun.youtubedl_common.utils.RuntimeArchiveUtils.installArchive(aria2cArchive, aria2cDir) { staged ->
+                            val stagedLibraries = File(staged, "usr/lib")
+                            if (!stagedLibraries.isDirectory || stagedLibraries.list()?.isEmpty() != false) {
+                                throw IOException("aria2 archive contains no runtime libraries")
+                            }
+                        }
+                        com.sipun.youtubedl_common.SharedPrefsHelper.update(context, "aria2cLibVersion", version)
+                    }
+                }
+
                 com.sipun.ffmpeg.FFmpeg.init(context)
                 runCatching { com.sipun.aria2c.Aria2c.init(context) }
                 YoutubeDL.init(context)

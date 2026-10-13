@@ -12,6 +12,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +44,8 @@ import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -94,9 +97,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 private val DownlyGreen = Color(0xFF119B70)
-private val DownlyInk = Color(0xFF172520)
-private val DownlyMuted = Color(0xFF728078)
-private val DownlyCanvas = Color(0xFFF4F7F5)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -137,7 +137,8 @@ data class ScreenState(
     val mode: MediaMode = MediaMode.VIDEO,
     val quality: String = "Best",
     val tab: Int = 0,
-    val history: List<DownloadRecord> = emptyList()
+    val history: List<DownloadRecord> = emptyList(),
+    val themeMode: String = "System"
 )
 
 class DownlyViewModel : ViewModel() {
@@ -150,7 +151,12 @@ class DownlyViewModel : ViewModel() {
     private var appContext: Context? = null
 
     fun attach(context: Context) {
-        if (appContext == null) appContext = context.applicationContext
+        if (appContext == null) {
+            appContext = context.applicationContext
+            val savedTheme = appContext!!.getSharedPreferences("downly-settings", Context.MODE_PRIVATE)
+                .getString("theme_mode", "System") ?: "System"
+            _state.value = _state.value.copy(themeMode = savedTheme)
+        }
         initialize()
     }
 
@@ -158,6 +164,12 @@ class DownlyViewModel : ViewModel() {
     fun setMode(value: MediaMode) = mutate { copy(mode = value) }
     fun setQuality(value: String) = mutate { copy(quality = value) }
     fun setTab(value: Int) = mutate { copy(tab = value) }
+
+    fun setThemeMode(value: String) {
+        mutate { copy(themeMode = value) }
+        appContext?.getSharedPreferences("downly-settings", Context.MODE_PRIVATE)
+            ?.edit()?.putString("theme_mode", value)?.apply()
+    }
 
     fun initialize() {
         if (_state.value.initialized || _state.value.busy) return
@@ -366,13 +378,40 @@ private fun DownlyApp(vm: DownlyViewModel = viewModel()) {
     var qualityMenu by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.attach(context) }
 
-    MaterialTheme(
-        colorScheme = MaterialTheme.colorScheme.copy(
-            primary = DownlyGreen, onPrimary = Color.White, background = DownlyCanvas, surface = Color.White
+    val darkTheme = when (state.themeMode) {
+        "Light" -> false
+        "Dark" -> true
+        else -> isSystemInDarkTheme()
+    }
+    val downlyColors = if (darkTheme) {
+        darkColorScheme(
+            primary = DownlyGreen,
+            onPrimary = Color.White,
+            background = Color(0xFF101512),
+            surface = Color(0xFF1A211D),
+            onSurface = Color(0xFFE7EEE9),
+            onSurfaceVariant = Color(0xFFA8B4AC),
+            secondaryContainer = Color(0xFF294438),
+            onSecondaryContainer = Color(0xFFD5F4E4),
+            outline = Color(0xFF46544B)
         )
-    ) {
+    } else {
+        lightColorScheme(
+            primary = DownlyGreen,
+            onPrimary = Color.White,
+            background = Color(0xFFF5F7F5),
+            surface = Color.White,
+            onSurface = Color(0xFF172520),
+            onSurfaceVariant = Color(0xFF728078),
+            secondaryContainer = Color(0xFFE0F5EC),
+            onSecondaryContainer = Color(0xFF14583F),
+            outline = Color(0xFFD8DDD9)
+        )
+    }
+
+    MaterialTheme(colorScheme = downlyColors) {
         Scaffold(
-            containerColor = DownlyCanvas,
+            containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 TopAppBar(
                     title = {
@@ -384,11 +423,11 @@ private fun DownlyApp(vm: DownlyViewModel = viewModel()) {
                             Spacer(Modifier.width(10.dp))
                             Column {
                                 Text("Downly", fontWeight = FontWeight.ExtraBold)
-                                Text("Your personal media saver", style = MaterialTheme.typography.labelSmall, color = DownlyMuted)
+                                Text("Your personal media saver", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = DownlyCanvas)
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
                 )
             },
             bottomBar = {
@@ -421,18 +460,18 @@ private fun DownloadScreen(
     val context = LocalContext.current
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
             Column {
-                Text("Save what you love.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = DownlyInk)
+                Text("Save what you love.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(5.dp))
-                Text("Videos, audio and more — in a few taps.", color = DownlyMuted)
+                Text("Videos, audio and more — in a few taps.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {
-            Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.Link, null, tint = DownlyGreen)
@@ -480,16 +519,16 @@ private fun DownloadScreen(
                         Spacer(Modifier.width(8.dp))
                         Text(if (state.busy) "Working…" else "Fetch media info", fontWeight = FontWeight.Bold)
                     }
-                    if (state.message.isNotBlank()) Text(state.message, color = if (state.message.contains("failed", true) || state.message.contains("invalid", true)) MaterialTheme.colorScheme.error else DownlyMuted, style = MaterialTheme.typography.bodySmall)
+                    if (state.message.isNotBlank()) Text(state.message, color = if (state.message.contains("failed", true) || state.message.contains("invalid", true)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
         item {
             state.preview?.let { preview ->
-                Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFFE0F5EC)),
+                            Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
                                 contentAlignment = Alignment.Center) {
                                 Icon(if (state.mode == MediaMode.VIDEO) Icons.Rounded.Movie else Icons.Rounded.MusicNote, null,
                                     tint = DownlyGreen, modifier = Modifier.size(25.dp))
@@ -498,7 +537,7 @@ private fun DownloadScreen(
                             Column(Modifier.weight(1f)) {
                                 Text(preview.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(listOf(preview.uploader, preview.duration).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "Media ready" },
-                                    color = DownlyMuted, style = MaterialTheme.typography.bodySmall)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                         Button(onClick = vm::startDownload, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) {
@@ -506,45 +545,27 @@ private fun DownloadScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("Download ${if (state.mode == MediaMode.AUDIO) "audio" else "video"}", fontWeight = FontWeight.Bold)
                         }
-                        Text("Save only content you own or have permission to download.", color = DownlyMuted, style = MaterialTheme.typography.labelSmall)
+                        Text("Save only content you own or have permission to download.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
         }
         item {
-            Text("Quick tips", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                Tip("01", "Paste a supported link", Modifier.weight(1f))
-                Tip("02", "Choose video or MP3", Modifier.weight(1f))
-                Tip("03", "Track progress", Modifier.weight(1f))
-            }
-        }
-        item {
             Text("Recent activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            if (state.history.isEmpty()) Text("Your downloads will appear here.", color = DownlyMuted, style = MaterialTheme.typography.bodySmall)
+            if (state.history.isEmpty()) Text("Your downloads will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             else state.history.take(2).forEach { DownloadCard(it, vm) }
         }
     }
 }
 
 @Composable
-private fun Tip(number: String, text: String, modifier: Modifier) {
-    Card(modifier, shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(number, color = DownlyGreen, fontWeight = FontWeight.ExtraBold)
-            Text(text, color = DownlyInk, style = MaterialTheme.typography.labelSmall, minLines = 2)
-        }
-    }
-}
-
-@Composable
 private fun ActivityScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier) {
-    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Activity", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
-                    Text("${state.history.count { it.status == DownloadStatus.COMPLETE }} completed · ${state.history.count { it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.QUEUED }} active", color = DownlyMuted)
+                    Text("${state.history.count { it.status == DownloadStatus.COMPLETE }} completed · ${state.history.count { it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.QUEUED }} active", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(state.history.size.toString(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = DownlyGreen)
             }
@@ -553,12 +574,12 @@ private fun ActivityScreen(state: ScreenState, vm: DownlyViewModel, modifier: Mo
             OutlinedButton(onClick = vm::clearFinished, modifier = Modifier.fillMaxWidth()) { Text("Clear finished and failed") }
         }
         if (state.history.isEmpty()) item {
-            Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Rounded.History, null, tint = DownlyGreen, modifier = Modifier.size(42.dp))
                     Spacer(Modifier.height(10.dp))
                     Text("Nothing here yet", fontWeight = FontWeight.Bold)
-                    Text("Your queue and download history will show here.", color = DownlyMuted)
+                    Text("Your queue and download history will show here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -568,17 +589,17 @@ private fun ActivityScreen(state: ScreenState, vm: DownlyViewModel, modifier: Mo
 
 @Composable
 private fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
-    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.fillMaxWidth().padding(15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(42.dp).clip(RoundedCornerShape(13.dp)).background(Color(0xFFE3F5EC)),
+                Box(Modifier.size(42.dp).clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
                     contentAlignment = Alignment.Center) {
                     Icon(if (record.status == DownloadStatus.COMPLETE) Icons.Rounded.CheckCircle else Icons.Rounded.Download, null, tint = DownlyGreen)
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(record.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(record.detail, color = DownlyMuted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(record.detail, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 if (record.status == DownloadStatus.QUEUED || record.status == DownloadStatus.DOWNLOADING) {
                     IconButton(onClick = { vm.cancel(record) }) { Icon(Icons.Rounded.Close, "Cancel download") }
@@ -588,7 +609,7 @@ private fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
             }
             if (record.status == DownloadStatus.QUEUED || record.status == DownloadStatus.DOWNLOADING) {
                 LinearProgressIndicator(progress = { record.progress }, modifier = Modifier.fillMaxWidth(), color = DownlyGreen)
-                Text("${(record.progress * 100).toInt()}%", color = DownlyMuted, style = MaterialTheme.typography.labelSmall)
+                Text("${(record.progress * 100).toInt()}%", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
             }
             if (record.filePath != null && record.status == DownloadStatus.COMPLETE) {
                 Text("Saved: ${File(record.filePath).name}", color = DownlyGreen, style = MaterialTheme.typography.labelSmall)
@@ -597,37 +618,48 @@ private fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
                 }, modifier = Modifier.fillMaxWidth()) { Text("Show download location") }
             }
             Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(record.timestamp)),
-                color = DownlyMuted, style = MaterialTheme.typography.labelSmall)
+                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
 @Composable
 private fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier) {
-    Column(modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
-        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Appearance", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                Text("Choose how Downly looks on your device.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(state.themeMode == "System", { vm.setThemeMode("System") }, label = { Text("System") })
+                    FilterChip(state.themeMode == "Light", { vm.setThemeMode("Light") }, label = { Text("Light") })
+                    FilterChip(state.themeMode == "Dark", { vm.setThemeMode("Dark") }, label = { Text("Dark") })
+                }
+            }
+        }
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Downloader runtime", fontWeight = FontWeight.Bold)
-                Text(if (state.initialized) "Ready" else if (state.busy) "Preparing…" else "Not ready", color = DownlyMuted)
+                Text(if (state.initialized) "Ready" else if (state.busy) "Preparing…" else "Not ready", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = vm::initialize, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) {
                     Text("Initialize / retry")
                 }
             }
         }
-        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Download location", fontWeight = FontWeight.Bold)
-                Text("App-specific storage: Android/data/com.sipun.downly/files/Downly", color = DownlyMuted)
-                Text("Files are stored locally on your device. Android's file manager can be used to manage app-specific files.", color = DownlyMuted, style = MaterialTheme.typography.bodySmall)
+                Text("App-specific storage: Android/data/com.sipun.downly/files/Downly", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Files are stored locally on your device. Android's file manager can be used to manage app-specific files.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }
-        Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("About Downly", fontWeight = FontWeight.Bold)
-                Text("Powered by your Kotlin yt-dlp Android library.", color = DownlyMuted)
-                Text("Android 11+ · arm64-v8a devices", color = DownlyMuted)
-                Text("Respect creators and platform terms. Download only content you are authorized to save.", color = DownlyMuted, style = MaterialTheme.typography.bodySmall)
+                Text("Powered by your Kotlin yt-dlp Android library.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Android 11+ · arm64-v8a devices", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Respect creators and platform terms. Download only content you are authorized to save.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Darkstar085/youtubedl-kotlin"))
                     appContextOpen(intent)

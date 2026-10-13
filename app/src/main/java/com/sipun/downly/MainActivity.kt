@@ -9,9 +9,11 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -375,8 +377,8 @@ private fun DownlyApp(vm: DownlyViewModel = viewModel()) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
     var qualityMenu by remember { mutableStateOf(false) }
-    var navigationMenuExpanded by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.attach(context) }
+    BackHandler(enabled = state.tab != 0) { vm.setTab(0) }
 
     val darkTheme = when (state.themeMode) {
         "Light" -> false
@@ -415,7 +417,10 @@ private fun DownlyApp(vm: DownlyViewModel = viewModel()) {
             topBar = {
                 TopAppBar(
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.clickable { vm.setTab(0) },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(DownlyGreen),
                                 contentAlignment = Alignment.Center) {
                                 Icon(Icons.Rounded.Download, null, tint = Color.White)
@@ -428,30 +433,11 @@ private fun DownlyApp(vm: DownlyViewModel = viewModel()) {
                         }
                     },
                     actions = {
-                        Box {
-                            IconButton(onClick = { navigationMenuExpanded = true }) {
-                                Icon(Icons.Rounded.MoreVert, contentDescription = "Open navigation menu")
-                            }
-                            DropdownMenu(
-                                expanded = navigationMenuExpanded,
-                                onDismissRequest = { navigationMenuExpanded = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Download") },
-                                    leadingIcon = { Icon(Icons.Rounded.Link, null) },
-                                    onClick = { vm.setTab(0); navigationMenuExpanded = false }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Activity") },
-                                    leadingIcon = { Icon(Icons.Rounded.History, null) },
-                                    onClick = { vm.setTab(1); navigationMenuExpanded = false }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Settings") },
-                                    leadingIcon = { Icon(Icons.Rounded.Settings, null) },
-                                    onClick = { vm.setTab(2); navigationMenuExpanded = false }
-                                )
-                            }
+                        IconButton(onClick = { vm.setTab(1) }) {
+                            Icon(Icons.Rounded.History, contentDescription = "Download history")
+                        }
+                        IconButton(onClick = { vm.setTab(2) }) {
+                            Icon(Icons.Rounded.Settings, contentDescription = "Settings")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
@@ -482,20 +468,58 @@ private fun DownloadScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Column {
-                Text("Save what you love.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(5.dp))
-                Text("Videos, audio and more — in a few taps.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Save what you love.",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Videos, audio and more — in a few taps.",
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(
+                            Modifier.size(48.dp).clip(RoundedCornerShape(15.dp)).background(DownlyGreen),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Rounded.Movie, null, tint = Color.White, modifier = Modifier.size(27.dp)) }
+                        Box(
+                            Modifier.size(42.dp).align(Alignment.End).clip(RoundedCornerShape(13.dp))
+                                .background(MaterialTheme.colorScheme.surface),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Rounded.MusicNote, null, tint = DownlyGreen) }
+                    }
+                }
             }
         }
         item {
-            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Link, null, tint = DownlyGreen)
-                        Spacer(Modifier.width(8.dp))
-                        Text("PASTE A LINK", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.weight(1f))
+                        Box(
+                            Modifier.size(44.dp).clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.secondaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Rounded.Link, null, tint = DownlyGreen) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Paste a link", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("YouTube, Shorts and supported sites", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall)
+                        }
                         IconButton(onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             val text = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
@@ -567,11 +591,6 @@ private fun DownloadScreen(
                     }
                 }
             }
-        }
-        item {
-            Text("Recent activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            if (state.history.isEmpty()) Text("Your downloads will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            else state.history.take(2).forEach { DownloadCard(it, vm) }
         }
     }
 }

@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Settings
@@ -59,8 +60,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -376,6 +375,7 @@ private fun DownlyApp(vm: DownlyViewModel = viewModel()) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
     var qualityMenu by remember { mutableStateOf(false) }
+    var navigationMenuExpanded by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.attach(context) }
 
     val darkTheme = when (state.themeMode) {
@@ -427,17 +427,35 @@ private fun DownlyApp(vm: DownlyViewModel = viewModel()) {
                             }
                         }
                     },
+                    actions = {
+                        Box {
+                            IconButton(onClick = { navigationMenuExpanded = true }) {
+                                Icon(Icons.Rounded.MoreVert, contentDescription = "Open navigation menu")
+                            }
+                            DropdownMenu(
+                                expanded = navigationMenuExpanded,
+                                onDismissRequest = { navigationMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Download") },
+                                    leadingIcon = { Icon(Icons.Rounded.Link, null) },
+                                    onClick = { vm.setTab(0); navigationMenuExpanded = false }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Activity") },
+                                    leadingIcon = { Icon(Icons.Rounded.History, null) },
+                                    onClick = { vm.setTab(1); navigationMenuExpanded = false }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Settings") },
+                                    leadingIcon = { Icon(Icons.Rounded.Settings, null) },
+                                    onClick = { vm.setTab(2); navigationMenuExpanded = false }
+                                )
+                            }
+                        }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
                 )
-            },
-            bottomBar = {
-                Surface(shadowElevation = 8.dp) {
-                    PrimaryTabRow(selectedTabIndex = state.tab.coerceIn(0, 2)) {
-                        Tab(state.tab == 0, { vm.setTab(0) }, text = { Text("Download") }, icon = { Icon(Icons.Rounded.Link, null) })
-                        Tab(state.tab == 1, { vm.setTab(1) }, text = { Text("Activity") }, icon = { Icon(Icons.Rounded.History, null) })
-                        Tab(state.tab == 2, { vm.setTab(2) }, text = { Text("Settings") }, icon = { Icon(Icons.Rounded.Settings, null) })
-                    }
-                }
             }
         ) { padding ->
             when (state.tab) {

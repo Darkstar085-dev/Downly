@@ -3,6 +3,9 @@ package com.sipun.downly
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -27,6 +30,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,8 +46,12 @@ import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.VideoLibrary
+import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material.icons.rounded.SignalCellularAlt
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -61,6 +69,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -86,6 +96,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sipun.youtubedl_android.YoutubeDL
 import com.sipun.youtubedl_android.YoutubeDLRequest
 import com.sipun.youtubedl_android.mapper.VideoInfo
+import com.sipun.youtubedl_android.mapper.VideoFormat
+import coil.compose.AsyncImage
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
@@ -122,11 +134,17 @@ data class DownloadRecord(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class QualityOption(val quality: String, val height: Int, val estimatedBytes: Long?)
+data class AudioOption(val formatId: String, val quality: String, val bitrate: Int, val estimatedBytes: Long?)
+
 data class MediaPreview(
     val title: String,
     val uploader: String,
     val duration: String,
-    val url: String
+    val url: String,
+    val thumbnailUrl: String? = null,
+    val qualityOptions: List<QualityOption> = emptyList(),
+    val audioOptions: List<AudioOption> = emptyList()
 )
 
 data class ScreenState(
@@ -136,7 +154,9 @@ data class ScreenState(
     val message: String = "Starting downloader…",
     val preview: MediaPreview? = null,
     val mode: MediaMode = MediaMode.VIDEO,
-    val quality: String = "Best",
+    val quality: String = "Smart",
+    val connectionType: String = "Checking connection…",
+    val recommendedQuality: String = "480p",
     val tab: Int = 0,
     val history: List<DownloadRecord> = emptyList(),
     val themeMode: String = "System"
@@ -150,6 +170,8 @@ class DownlyViewModel : ViewModel() {
     private val _state = MutableStateFlow(ScreenState())
     val state: StateFlow<ScreenState> = _state.asStateFlow()
     private var appContext: Context? = null
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     fun attach(context: Context) {
         if (appContext == null) {
@@ -157,6 +179,15 @@ class DownlyViewModel : ViewModel() {
             val savedTheme = appContext!!.getSharedPreferences("downly-settings", Context.MODE_PRIVATE)
                 .getString("theme_mode", "System") ?: "System"
             _state.value = _state.value.copy(themeMode = savedTheme)
+            connectivityManager = appContext!!.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) = updateConnectionType()
+                override fun onLost(network: Network) = updateConnectionType()
+                override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = updateConnectionType()
+            }
+            networkCallback = callback
+            runCatching { connectivityManager?.registerDefaultNetworkCallback(callback) }
+            updateConnectionType()
         }
         initialize()
     }
@@ -210,16 +241,19 @@ class DownlyViewModel : ViewModel() {
                     title = info.title?.takeIf { it.isNotBlank() } ?: url,
                     uploader = info.uploader.orEmpty(),
                     duration = formatDuration(info.duration),
-                    url = info.webpageUrl ?: url
+                    url = info.webpageUrl ?: url,
+                    thumbnailUrl = info.thumbnail?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
+                    qualityOptions = buildQualityOptions(info.formats.orEmpty()),
+                    audioOptions = buildAudioOptions(info.formats.orEmpty())
                 )
-                mutate { copy(busy = false, preview = preview, message = "Media details ready") }
+                mutate { copy(busy = false, preview = preview, recommendedQuality = recommendQuality(preview.qualityOptions, connectionType), message = "Media details ready") }
             } catch (error: Exception) {
                 mutate { copy(busy = false, message = friendlyError(error)) }
             }
         }
     }
 
-    fun startDownload() {
+    fun startDownload(qualityOverride: String? = null) {
         val current = _state.value
         val url = current.url.trim()
         if (!isValidUrl(url)) {
@@ -243,13 +277,14 @@ class DownlyViewModel : ViewModel() {
             status = DownloadStatus.QUEUED
         )
         mutate { copy(history = listOf(record) + history, tab = 1, message = "Added to download activity") }
+        val selectedQuality = qualityOverride ?: if (current.mode == MediaMode.VIDEO && current.quality == "Smart") current.recommendedQuality else current.quality
         worker.execute {
             if (cancelledIds.remove(record.id)) return@execute
-            executeDownload(record, current.mode, current.quality)
+            executeDownload(record, current.mode, selectedQuality, current.connectionType)
         }
     }
 
-    private fun executeDownload(record: DownloadRecord, mode: MediaMode, quality: String) {
+    private fun executeDownload(record: DownloadRecord, mode: MediaMode, quality: String, connectionType: String) {
         if (cancelledIds.remove(record.id)) return
         try {
             setRecord(record.id) { copy(status = DownloadStatus.DOWNLOADING, detail = "Starting yt-dlp…") }
@@ -262,16 +297,14 @@ class DownlyViewModel : ViewModel() {
                 .addOption("--no-playlist")
                 .addOption("--restrict-filenames")
             if (mode == MediaMode.AUDIO) {
+                val audioFormatId = quality.takeIf { it.startsWith("audio:") }?.removePrefix("audio:")
+                if (!audioFormatId.isNullOrBlank()) request.addOption("-f", audioFormatId)
                 request.addOption("-x")
                     .addOption("--audio-format", "mp3")
-                    .addOption("--audio-quality", "0")
+                    .addOption("--audio-quality", if (connectionType == "Mobile data") "5" else "0")
             } else {
-                val format = when (quality) {
-                    "1080p" -> "bv*[height<=1080]+ba/b[height<=1080]"
-                    "720p" -> "bv*[height<=720]+ba/b[height<=720]"
-                    "480p" -> "bv*[height<=480]+ba/b[height<=480]"
-                    else -> "bv*+ba/b"
-                }
+                val maxHeight = quality.removeSuffix("p").toIntOrNull()
+                val format = if (maxHeight != null) "bv*[height<=$maxHeight]+ba/b[height<=$maxHeight]" else "bv*+ba/b"
                 request.addOption("-f", format)
                     .addOption("--merge-output-format", "mp4")
             }
@@ -365,7 +398,21 @@ class DownlyViewModel : ViewModel() {
         }
     }
 
+    private fun updateConnectionType() {
+        val manager = connectivityManager ?: return
+        val capabilities = manager.getNetworkCapabilities(manager.activeNetwork)
+        val type = when {
+            capabilities == null -> "Offline"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Mobile data"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+            else -> "Connected"
+        }
+        mutate { copy(connectionType = type, recommendedQuality = preview?.let { recommendQuality(it.qualityOptions, type) } ?: defaultQualityFor(type)) }
+    }
+
     override fun onCleared() {
+        networkCallback?.let { callback -> runCatching { connectivityManager?.unregisterNetworkCallback(callback) } }
         worker.shutdownNow()
         persistenceWorker.shutdown()
     }
@@ -376,7 +423,6 @@ class DownlyViewModel : ViewModel() {
 private fun DownlyApp(vm: DownlyViewModel = viewModel()) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
-    var qualityMenu by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.attach(context) }
     BackHandler(enabled = state.tab != 0) { vm.setTab(0) }
 
@@ -387,65 +433,94 @@ private fun DownlyApp(vm: DownlyViewModel = viewModel()) {
     }
     val downlyColors = if (darkTheme) {
         darkColorScheme(
-            primary = DownlyGreen,
-            onPrimary = Color.White,
-            background = Color(0xFF101512),
-            surface = Color(0xFF1A211D),
-            onSurface = Color(0xFFE7EEE9),
-            onSurfaceVariant = Color(0xFFA8B4AC),
-            secondaryContainer = Color(0xFF294438),
-            onSecondaryContainer = Color(0xFFD5F4E4),
-            outline = Color(0xFF46544B)
+            primary = Color(0xFF79D8B0), onPrimary = Color(0xFF003824),
+            primaryContainer = Color(0xFF075C3D), onPrimaryContainer = Color(0xFFB8F5D8),
+            secondary = Color(0xFFB3CCBF), onSecondary = Color(0xFF20372C),
+            tertiary = Color(0xFFB9D8C9), background = Color(0xFF101512),
+            surface = Color(0xFF171E19), surfaceContainerLow = Color(0xFF1D2721),
+            surfaceContainer = Color(0xFF232D27), onSurface = Color(0xFFE7EEE9),
+            onSurfaceVariant = Color(0xFFA8B4AC), secondaryContainer = Color(0xFF294438),
+            onSecondaryContainer = Color(0xFFD5F4E4), outline = Color(0xFF607067),
+            outlineVariant = Color(0xFF3A4940)
         )
     } else {
         lightColorScheme(
-            primary = DownlyGreen,
-            onPrimary = Color.White,
-            background = Color(0xFFF5F7F5),
-            surface = Color.White,
-            onSurface = Color(0xFF172520),
-            onSurfaceVariant = Color(0xFF728078),
-            secondaryContainer = Color(0xFFE0F5EC),
-            onSecondaryContainer = Color(0xFF14583F),
-            outline = Color(0xFFD8DDD9)
+            primary = Color(0xFF087B56), onPrimary = Color.White,
+            primaryContainer = Color(0xFFB9F0D6), onPrimaryContainer = Color(0xFF002113),
+            secondary = Color(0xFF426657), onSecondary = Color.White,
+            tertiary = Color(0xFF486458), background = Color(0xFFF6F8F6),
+            surface = Color(0xFFFCFDFC), surfaceContainerLow = Color(0xFFF0F4F1),
+            surfaceContainer = Color(0xFFE9EFEB), onSurface = Color(0xFF172520),
+            onSurfaceVariant = Color(0xFF596960), secondaryContainer = Color(0xFFD8F1E4),
+            onSecondaryContainer = Color(0xFF123E2D), outline = Color(0xFF75857B),
+            outlineVariant = Color(0xFFD2DED6)
         )
     }
 
-    MaterialTheme(colorScheme = downlyColors) {
+    MaterialTheme(
+        colorScheme = downlyColors,
+        shapes = Shapes(
+            extraSmall = RoundedCornerShape(8.dp),
+            small = RoundedCornerShape(12.dp),
+            medium = RoundedCornerShape(18.dp),
+            large = RoundedCornerShape(24.dp),
+            extraLarge = RoundedCornerShape(32.dp)
+        )
+    ) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 TopAppBar(
                     title = {
-                        Row(
-                            modifier = Modifier.clickable { vm.setTab(0) },
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(DownlyGreen),
-                                contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.Download, null, tint = Color.White)
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Column {
-                                Text("Downly", fontWeight = FontWeight.ExtraBold)
-                                Text("Your personal media saver", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                when (state.tab) {
+                                    1 -> "History"
+                                    2 -> "Settings"
+                                    else -> "Downly"
+                                },
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                when (state.tab) {
+                                    1 -> "Your downloads, all in one place"
+                                    2 -> "Make Downly work for you"
+                                    else -> "Your personal media saver"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        if (state.tab != 0) {
+                            IconButton(onClick = { vm.setTab(0) }) {
+                                Icon(Icons.Rounded.ArrowBack, contentDescription = "Back to Home")
                             }
                         }
                     },
                     actions = {
-                        IconButton(onClick = { vm.setTab(1) }) {
-                            Icon(Icons.Rounded.History, contentDescription = "Download history")
-                        }
-                        IconButton(onClick = { vm.setTab(2) }) {
-                            Icon(Icons.Rounded.Settings, contentDescription = "Settings")
+                        if (state.tab == 0) {
+                            IconButton(onClick = { vm.setTab(1) }) {
+                                Icon(Icons.Rounded.History, contentDescription = "Download history")
+                            }
+                            IconButton(onClick = { vm.setTab(2) }) {
+                                Icon(Icons.Rounded.Settings, contentDescription = "Settings")
+                            }
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 )
             }
         ) { padding ->
             when (state.tab) {
-                0 -> DownloadScreen(state, vm, Modifier.padding(padding), qualityMenu, { qualityMenu = it })
+                0 -> DownloadScreen(state, vm, Modifier.padding(padding))
                 1 -> ActivityScreen(state, vm, Modifier.padding(padding))
                 else -> SettingsScreen(state, vm, Modifier.padding(padding))
             }
@@ -457,20 +532,19 @@ private fun DownlyApp(vm: DownlyViewModel = viewModel()) {
 private fun DownloadScreen(
     state: ScreenState,
     vm: DownlyViewModel,
-    modifier: Modifier,
-    qualityMenu: Boolean,
-    setQualityMenu: (Boolean) -> Unit
+    modifier: Modifier
 ) {
     val context = LocalContext.current
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         item {
             Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 20.dp),
@@ -506,7 +580,7 @@ private fun DownloadScreen(
             }
         }
         item {
-            Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
@@ -529,7 +603,12 @@ private fun DownloadScreen(
                     }
                     OutlinedTextField(
                         value = state.url, onValueChange = vm::setUrl, modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("https://…") }, minLines = 2, shape = RoundedCornerShape(16.dp),
+                        placeholder = { Text("https://…") }, minLines = 2, shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            focusedLabelColor = MaterialTheme.colorScheme.primary
+                        ),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                         keyboardActions = KeyboardActions(onGo = { vm.fetchInfo() })
                     )
@@ -539,22 +618,10 @@ private fun DownloadScreen(
                         FilterChip(state.mode == MediaMode.AUDIO, { vm.setMode(MediaMode.AUDIO) },
                             label = { Text("MP3 audio") }, leadingIcon = { Icon(Icons.Rounded.MusicNote, null, Modifier.size(17.dp)) })
                         Spacer(Modifier.weight(1f))
-                        if (state.mode == MediaMode.VIDEO) {
-                            Box {
-                                OutlinedButton(onClick = { setQualityMenu(true) }, contentPadding = PaddingValues(horizontal = 10.dp)) {
-                                    Text(state.quality)
-                                }
-                                DropdownMenu(qualityMenu, { setQualityMenu(false) }) {
-                                    listOf("Best", "1080p", "720p", "480p").forEach {
-                                        DropdownMenuItem(text = { Text(it) }, onClick = { vm.setQuality(it); setQualityMenu(false) })
-                                    }
-                                }
-                            }
-                        }
                     }
                     Button(
                         onClick = vm::fetchInfo, modifier = Modifier.fillMaxWidth().height(51.dp),
-                        enabled = !state.busy && state.url.isNotBlank(), shape = RoundedCornerShape(15.dp)
+                        enabled = !state.busy && state.url.isNotBlank(), shape = MaterialTheme.shapes.medium
                     ) {
                         if (state.busy) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
                         else Icon(Icons.Rounded.VideoLibrary, null)
@@ -567,13 +634,17 @@ private fun DownloadScreen(
         }
         item {
             state.preview?.let { preview ->
-                Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
+                            Box(Modifier.size(width = 112.dp, height = 76.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
                                 contentAlignment = Alignment.Center) {
                                 Icon(if (state.mode == MediaMode.VIDEO) Icons.Rounded.Movie else Icons.Rounded.MusicNote, null,
                                     tint = DownlyGreen, modifier = Modifier.size(25.dp))
+                                if (!preview.thumbnailUrl.isNullOrBlank()) {
+                                    AsyncImage(model = preview.thumbnailUrl, contentDescription = "Media thumbnail",
+                                        modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                }
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
@@ -582,10 +653,93 @@ private fun DownloadScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                             }
                         }
-                        Button(onClick = vm::startDownload, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) {
-                            Icon(Icons.Rounded.Download, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Download ${if (state.mode == MediaMode.AUDIO) "audio" else "video"}", fontWeight = FontWeight.Bold)
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), shape = RoundedCornerShape(16.dp)) {
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Rounded.AutoAwesome, null, tint = DownlyGreen)
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text("Smart Download", fontWeight = FontWeight.Bold)
+                                        Text(if (state.mode == MediaMode.AUDIO) (if (state.connectionType == "Mobile data") "Mobile data · Smaller MP3 file" else state.connectionType + " · Best MP3 quality") else state.connectionType + " · " + state.recommendedQuality + " recommended", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    if (state.connectionType == "Wi-Fi" || state.connectionType == "Ethernet") Icon(Icons.Rounded.Wifi, null, tint = DownlyGreen) else Icon(Icons.Rounded.SignalCellularAlt, null, tint = DownlyGreen)
+                                }
+                                if (state.mode == MediaMode.VIDEO) {
+                                    val estimate = preview.qualityOptions.firstOrNull { it.quality == state.recommendedQuality }?.estimatedBytes
+                                    Text("Suggested " + state.recommendedQuality + (estimate?.let { " · about " + formatBytes(it) } ?: " · size depends on source"), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Button(onClick = { vm.startDownload() }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) {
+                                    Icon(Icons.Rounded.AutoAwesome, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(if (state.mode == MediaMode.AUDIO) "Smart MP3 Download" else "Smart Download · " + state.recommendedQuality, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        if (state.mode == MediaMode.VIDEO && preview.qualityOptions.isNotEmpty()) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("AVAILABLE VIDEO QUALITIES", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = DownlyGreen)
+                                    Spacer(Modifier.weight(1f))
+                                    Text("${preview.qualityOptions.size} options", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                preview.qualityOptions.forEach { option ->
+                                    Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(
+                                        containerColor = if (option.quality == state.recommendedQuality) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+                                    )) {
+                                        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f)) {
+                                                Text(option.quality + if (option.quality == state.recommendedQuality) " · Recommended" else "", fontWeight = FontWeight.Bold)
+                                                Text(option.estimatedBytes?.let { "About " + formatBytes(it) } ?: "File size varies by source", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                            OutlinedButton(onClick = { vm.startDownload(option.quality) }) { Text("Download") }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (state.mode == MediaMode.AUDIO && preview.audioOptions.isNotEmpty()) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("AVAILABLE AUDIO OPTIONS", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = DownlyGreen)
+                                    Spacer(Modifier.weight(1f))
+                                    Text("${preview.audioOptions.size} options", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                preview.audioOptions.forEach { option ->
+                                    Card(
+                                        shape = MaterialTheme.shapes.medium,
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                    ) {
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                Modifier.size(42.dp).clip(RoundedCornerShape(13.dp))
+                                                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(Icons.Rounded.MusicNote, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                            }
+                                            Spacer(Modifier.width(12.dp))
+                                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                                Text(option.quality, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                                Text(
+                                                    option.estimatedBytes?.let { "About " + formatBytes(it) } ?: "File size varies by source",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            Spacer(Modifier.width(8.dp))
+                                            OutlinedButton(
+                                                onClick = { vm.startDownload("audio:${option.formatId}") },
+                                                shape = MaterialTheme.shapes.medium,
+                                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+                                            ) { Text("Download") }
+                                        }
+                                    }
+                                }
+                            }
                         }
                         Text("Save only content you own or have permission to download.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                     }
@@ -597,11 +751,11 @@ private fun DownloadScreen(
 
 @Composable
 private fun ActivityScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier) {
-    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Activity", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+                    Text("Your downloads", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Text("${state.history.count { it.status == DownloadStatus.COMPLETE }} completed · ${state.history.count { it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.QUEUED }} active", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(state.history.size.toString(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = DownlyGreen)
@@ -611,7 +765,7 @@ private fun ActivityScreen(state: ScreenState, vm: DownlyViewModel, modifier: Mo
             OutlinedButton(onClick = vm::clearFinished, modifier = Modifier.fillMaxWidth()) { Text("Clear finished and failed") }
         }
         if (state.history.isEmpty()) item {
-            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Rounded.History, null, tint = DownlyGreen, modifier = Modifier.size(42.dp))
                     Spacer(Modifier.height(10.dp))
@@ -662,8 +816,7 @@ private fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
 
 @Composable
 private fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier) {
-    Column(modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+    Column(modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Appearance", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
@@ -675,35 +828,65 @@ private fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Mo
                 }
             }
         }
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Downloader runtime", fontWeight = FontWeight.Bold)
-                Text(if (state.initialized) "Ready" else if (state.busy) "Preparing…" else "Not ready", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedButton(onClick = vm::initialize, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) {
-                    Text("Initialize / retry")
-                }
-            }
-        }
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Download location", fontWeight = FontWeight.Bold)
-                Text("App-specific storage: Android/data/com.sipun.downly/files/Downly", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Files are stored locally on your device. Android's file manager can be used to manage app-specific files.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("About Downly", fontWeight = FontWeight.Bold)
-                Text("Powered by your Kotlin yt-dlp Android library.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Android 11+ · arm64-v8a devices", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Respect creators and platform terms. Download only content you are authorized to save.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Darkstar085/youtubedl-kotlin"))
-                    appContextOpen(intent)
-                }, modifier = Modifier.fillMaxWidth()) { Text("Library source & documentation") }
-            }
-        }
+
     }
+}
+
+
+private fun buildQualityOptions(formats: List<VideoFormat>): List<QualityOption> {
+    val videoFormats = formats.filter { it.height > 0 && it.vcodec?.lowercase() != "none" }
+    val audioFormats = formats.filter { it.vcodec?.lowercase() == "none" && it.acodec?.lowercase() != "none" }
+    return videoFormats.map { it.height }.distinct().sortedDescending().map { height ->
+        val video = videoFormats.filter { it.height == height }.maxByOrNull { it.fileSize.takeIf { size -> size > 0 } ?: it.fileSizeApproximate }
+        val audio = audioFormats.maxByOrNull { it.fileSize.takeIf { size -> size > 0 } ?: it.fileSizeApproximate }
+        val videoBytes = video?.let { it.fileSize.takeIf { size -> size > 0 } ?: it.fileSizeApproximate } ?: 0L
+        val audioBytes = audio?.let { it.fileSize.takeIf { size -> size > 0 } ?: it.fileSizeApproximate } ?: 0L
+        QualityOption(height.toString() + "p", height, (videoBytes + audioBytes).takeIf { it > 0L })
+    }
+}
+
+private fun buildAudioOptions(formats: List<VideoFormat>): List<AudioOption> {
+    return formats
+        .filter { it.vcodec?.lowercase() == "none" && it.acodec?.lowercase() != "none" }
+        .mapNotNull { format ->
+            val formatId = format.formatId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val bitrate = (format.abr.takeIf { it > 0.0 } ?: format.tbr).toInt()
+            val bytes = format.fileSize.takeIf { it > 0L } ?: format.fileSizeApproximate.takeIf { it > 0L }
+            AudioOption(
+                formatId = formatId,
+                quality = (if (bitrate > 0) "$bitrate kbps" else "Audio") + " · " + (format.ext?.uppercase() ?: "SOURCE"),
+                bitrate = bitrate,
+                estimatedBytes = bytes
+            )
+        }
+        .sortedWith(compareByDescending<AudioOption> { it.bitrate }.thenByDescending { it.estimatedBytes ?: 0L })
+        // Different format IDs can describe the same audio quality; show each bitrate/container once.
+        .distinctBy { "${it.bitrate}:${it.quality.substringAfter(" · ")}" }
+}
+
+private fun defaultQualityFor(connectionType: String): String = when (connectionType) {
+    "Wi-Fi", "Ethernet" -> "1080p"
+    "Mobile data" -> "480p"
+    else -> "360p"
+}
+
+private fun recommendQuality(options: List<QualityOption>, connectionType: String): String {
+    if (options.isEmpty()) return defaultQualityFor(connectionType)
+    val target = when (connectionType) {
+        "Wi-Fi", "Ethernet" -> 1080
+        "Mobile data" -> 480
+        else -> 360
+    }
+    return options.filter { it.height <= target }.maxByOrNull { it.height }?.quality
+        ?: options.minByOrNull { it.height }?.quality
+        ?: defaultQualityFor(connectionType)
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1_000_000_000 -> String.format(Locale.US, "%.1f GB", bytes / 1_000_000_000.0)
+    bytes >= 1_000_000 -> String.format(Locale.US, "%.1f MB", bytes / 1_000_000.0)
+    bytes >= 1_000 -> String.format(Locale.US, "%.0f KB", bytes / 1_000.0)
+    else -> bytes.toString() + " B"
 }
 
 private fun appContextOpen(intent: Intent) {

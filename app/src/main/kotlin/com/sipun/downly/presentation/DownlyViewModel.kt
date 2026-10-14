@@ -314,12 +314,13 @@ class DownlyViewModel : ViewModel() {
                     !file.name.endsWith(".ytdl") && !file.name.endsWith(".temp")
             }?.maxByOrNull { it.lastModified() }
                 ?: throw IOException("yt-dlp finished, but no completed output file was found in its download directory.")
+            val mediaId = extractMediaId(saved.name)
             val normalized = normalizeDownloadedFileName(saved, record.title)
             val outputFile = if (normalized != saved.name) {
                 val renamed = File(saved.parentFile, normalized)
                 if (saved.renameTo(renamed)) renamed else saved
             } else saved
-            val duplicate = findExistingMedia(context, outputFile.name, mode)
+            val duplicate = findExistingMedia(context, outputFile.name, mode, mediaId)
             if (duplicate != null) {
                 mutate {
                     copy(
@@ -334,10 +335,11 @@ class DownlyViewModel : ViewModel() {
                         message = "This file is already downloaded. Choose whether to replace it."
                     )
                 }
+                if (mediaId != null) saveMediaIdMapping(context, mediaId, duplicate.first)
                 setRecord(record.id) { copy(detail = "Waiting for duplicate choice…") }
                 return
             }
-            val publicPath = publishToMediaStore(context, outputFile, mode)
+            val publicPath = publishToMediaStore(context, outputFile, mode, mediaId)
             outputFile.delete()
             setRecord(record.id) {
                 copy(status = DownloadStatus.COMPLETE, progress = 1f, detail = "Download complete",
@@ -352,8 +354,6 @@ class DownlyViewModel : ViewModel() {
     }
 
     private fun normalizeDownloadedFileName(file: File, title: String): String {
-        val id = file.nameWithoutExtension.substringAfterLast(" - ", "").trim()
-            .takeIf { it.isNotBlank() && it != file.nameWithoutExtension }
         val cleanTitle = title
             .replace(Regex("#[\\p{L}\\p{N}_-]+"), " ")
             .replace('_', ' ')
@@ -374,11 +374,10 @@ class DownlyViewModel : ViewModel() {
                     }
                 } else value
             }
-        val suffix = id?.let { " [$it]" }.orEmpty()
-        return cleanTitle + suffix + "." + file.extension.lowercase().ifBlank { "mp4" }
+        return cleanTitle + "." + file.extension.lowercase().ifBlank { "mp4" }
     }
 
-    private fun findExistingMedia(context: Context, fileName: String, mode: MediaMode): Pair<Uri, String>? {
+    private fun findExistingMedia(context: Context, fileName: String, mode: MediaMode, mediaId: String?): Pair<Uri, String>? {
         val relativeDirectory = if (mode == MediaMode.AUDIO) {
             Environment.DIRECTORY_MUSIC + "/Downly/"
         } else {
@@ -389,7 +388,7 @@ class DownlyViewModel : ViewModel() {
         } else {
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         }
-        val mediaId = Regex("\\[([^]]+)]\\.").find(fileName)?.groupValues?.getOrNull(1)
+        val knownUri = mediaId?.let { readMediaIdMapping(context, it) }
         val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME)
         val selection = "${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
         context.contentResolver.query(
@@ -398,17 +397,41 @@ class DownlyViewModel : ViewModel() {
             while (cursor.moveToNext()) {
                 val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME))
                 val matchesName = name.equals(fileName, ignoreCase = true)
-                val matchesId = mediaId != null &&
-                    (name.contains(" - $mediaId.", ignoreCase = true) ||
-                     name.contains("[$mediaId].", ignoreCase = true))
-                if (matchesName || matchesId) {
-                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
-                    val uri = ContentUris.withAppendedId(collection, id)
+                val existingMediaId = extractMediaId(name)
+                val matchesLegacyId = mediaId != null && existingMediaId.equals(mediaId, ignoreCase = true)
+                val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
+                val uri = ContentUris.withAppendedId(collection, id)
+                val matchesStoredId = knownUri != null && knownUri == uri.toString()
+                if (matchesName || matchesLegacyId || matchesStoredId) {
                     return uri to (relativeDirectory + name)
                 }
             }
         }
         return null
+    }
+
+    private fun saveMediaIdMapping(context: Context, mediaId: String, uri: Uri) {
+        context.getSharedPreferences("downly-media-ids", Context.MODE_PRIVATE)
+            .edit().putString(mediaId, uri.toString()).apply()
+    }
+
+    private fun readMediaIdMapping(context: Context, mediaId: String): String? {
+        return context.getSharedPreferences("downly-media-ids", Context.MODE_PRIVATE)
+            .getString(mediaId, null)
+    }
+
+    private fun extractMediaId(fileName: String): String? {
+        val baseName = fileName.substringBeforeLast('.', fileName)
+            .replace(Regex("\\s+\\(\\d+\\)$"), "")
+            .trim()
+        val bracketedId = Regex("\\[([^]]+)]").find(baseName)?.groupValues?.getOrNull(1)
+        if (!bracketedId.isNullOrBlank()) return bracketedId.trim()
+
+        val separator = " - "
+        if (!baseName.contains(separator)) return null
+        return baseName.substringAfterLast(separator).trim()
+            .replace(Regex("\\s+\\(\\d+\\)$"), "")
+            .takeIf { it.isNotBlank() }
     }
 
     fun resolveDuplicate(replaceExisting: Boolean) {
@@ -469,7 +492,7 @@ class DownlyViewModel : ViewModel() {
         }
     }
 
-    private fun publishToMediaStore(context: Context, source: File, mode: MediaMode): String {
+    private fun publishToMediaStore(context: Context, source: File, mode: MediaMode, mediaId: String?): String {
         val resolver = context.contentResolver
         val relativeDirectory = if (mode == MediaMode.AUDIO) {
             Environment.DIRECTORY_MUSIC + "/Downly/"
@@ -509,6 +532,7 @@ class DownlyViewModel : ViewModel() {
             if (resolver.update(uri, publishedValues, null, null) <= 0) {
                 throw IOException("Could not publish the downloaded file.")
             }
+            if (!mediaId.isNullOrBlank()) saveMediaIdMapping(context, mediaId, uri)
             return relativeDirectory + source.name
         } catch (error: Exception) {
             resolver.delete(uri, null, null)

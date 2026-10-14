@@ -304,7 +304,7 @@ fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, 
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     AndroidView(
                         factory = { viewContext -> ImageView(viewContext).apply { setImageDrawable(viewContext.packageManager.getApplicationIcon(viewContext.packageName)) } },
-                        modifier = Modifier.size(72.dp).clip(RoundedCornerShape(20.dp))
+                        modifier = Modifier.size(64.dp).clip(RoundedCornerShape(16.dp))
                     )
                     Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     Text(stringResource(R.string.about_dialog_description), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)

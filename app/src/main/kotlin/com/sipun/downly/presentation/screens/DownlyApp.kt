@@ -176,6 +176,14 @@ fun DownlyApp(
         else -> isSystemInDarkTheme()
     }
 
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) {
+        val window = (view.context as android.app.Activity).window
+        androidx.compose.runtime.SideEffect {
+            androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+        }
+    }
+
     DownlyTheme(darkTheme = darkTheme, dynamicColor = state.dynamicColor) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,

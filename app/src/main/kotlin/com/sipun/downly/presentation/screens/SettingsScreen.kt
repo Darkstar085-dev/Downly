@@ -18,10 +18,13 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -42,7 +45,7 @@ import com.sipun.downly.data.ScreenState
 import com.sipun.downly.presentation.DownlyViewModel
 
 @Composable
-fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier) {
+fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, onCheckForUpdates: () -> Unit = {}) {
     var showThemePreferences by remember { mutableStateOf(false) }
     val selectedThemeIcon = when (state.themeMode) {
         "Light" -> Icons.Rounded.LightMode
@@ -123,6 +126,30 @@ fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier) 
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold
                     )
+                }
+            }
+        }
+
+        Text(stringResource(R.string.updates_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Surface(Modifier.size(50.dp), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                        Icon(Icons.Rounded.SystemUpdate, contentDescription = null, modifier = Modifier.padding(13.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(stringResource(R.string.updates_check_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.updates_check_description), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Button(onClick = onCheckForUpdates, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(50), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                    Text(stringResource(R.string.updates_check_action), fontWeight = FontWeight.SemiBold)
                 }
             }
         }

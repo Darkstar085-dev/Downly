@@ -47,6 +47,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -70,6 +72,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.sipun.downly.data.MediaMode
+import com.sipun.downly.ui.update.UpdateContent
 import com.sipun.downly.presentation.DownlyViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -152,9 +155,18 @@ private fun formatMediaDuration(milliseconds: Long?): String? {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DownlyApp(vm: DownlyViewModel = viewModel()) {
+fun DownlyApp(
+    vm: DownlyViewModel = viewModel(),
+    checkUpdatesRequested: Boolean = false,
+    onCheckUpdatesRequestConsumed: () -> Unit = {},
+    notificationUpdateRequested: Boolean = false,
+    onNotificationUpdateRequestConsumed: () -> Unit = {},
+    installUpdateRequested: Boolean = false,
+    onInstallUpdateRequestConsumed: () -> Unit = {},
+) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
+    var requestAnotherUpdateCheck by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.attach(context) }
     BackHandler(enabled = state.tab != 0) { vm.setTab(0) }
 
@@ -213,9 +225,22 @@ fun DownlyApp(vm: DownlyViewModel = viewModel()) {
             when (state.tab) {
                 0 -> DownloadScreen(state, vm, Modifier.padding(padding))
                 1 -> ActivityScreen(state, vm, Modifier.padding(padding))
-                else -> SettingsScreen(state, vm, Modifier.padding(padding))
+                else -> SettingsScreen(state, vm, Modifier.padding(padding), onCheckForUpdates = { requestAnotherUpdateCheck = true })
             }
         }
+
+        UpdateContent(
+            checkRequested = checkUpdatesRequested || requestAnotherUpdateCheck,
+            onCheckRequestConsumed = {
+                requestAnotherUpdateCheck = false
+                onCheckUpdatesRequestConsumed()
+            },
+            onRequestCheck = { requestAnotherUpdateCheck = true },
+            notificationRequested = notificationUpdateRequested,
+            onNotificationRequestConsumed = onNotificationUpdateRequestConsumed,
+            installRequested = installUpdateRequested,
+            onInstallRequestConsumed = onInstallUpdateRequestConsumed,
+        )
 
         state.duplicatePrompt?.let { prompt ->
             val targetFolder = if (prompt.mode == MediaMode.AUDIO) "Music/Downly" else "Movies/Downly"

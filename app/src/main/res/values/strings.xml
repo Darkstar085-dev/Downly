@@ -6,6 +6,16 @@
     <string name="settings_title">Settings</string>
     <string name="settings_subtitle">Make Downly work for you</string>
     <string name="appearance_title">Appearance</string>
+    <string name="about_title">About</string>
+    <string name="about_app_title">Downly</string>
+    <string name="about_app_description">Your downloads, organized and ready when you need them.</string>
+    <string name="about_source_title">Open source</string>
+    <string name="about_source_description">Explore the code and contribute on GitHub.</string>
+    <string name="about_source_url">https://github.com/Darkstar085/Downly</string>
+    <string name="about_dialog_description">A simple, reliable place for your downloads.</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_made_with">Made with</string>
+    <string name="about_by_sipun">by Sipun</string>
     <string name="appearance_description">Personalize how Downly looks on your device.</string>
     <string name="theme_title">Theme</string>
     <string name="theme_description">Choose the look that feels right.</string>

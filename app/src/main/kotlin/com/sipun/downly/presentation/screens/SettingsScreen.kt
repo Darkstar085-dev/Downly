@@ -1,6 +1,29 @@
 package com.sipun.downly.presentation.screens
 
 import android.os.Build
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.viewinterop.AndroidView
+import android.widget.ImageView
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.Image
+import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.Info
+import com.sipun.downly.BuildConfig
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieConstants
+import com.airbnb.lottie.compose.animateLottieCompositionAsState
+import com.airbnb.lottie.compose.rememberLottieComposition
+import com.airbnb.lottie.compose.rememberLottieDynamicProperties
+import com.airbnb.lottie.compose.rememberLottieDynamicProperty
+import com.airbnb.lottie.LottieProperty
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +72,8 @@ import com.sipun.downly.presentation.DownlyViewModel
 @Composable
 fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, onCheckForUpdates: () -> Unit = {}) {
     var showThemePreferences by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val selectedThemeIcon = when (state.themeMode) {
         "Light" -> Icons.Rounded.LightMode
         "Dark" -> Icons.Rounded.DarkMode
@@ -203,6 +228,102 @@ fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, 
                 }
                 Button(onClick = onCheckForUpdates, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(50), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
                     Text(stringResource(R.string.updates_check_action), fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        Text(stringResource(R.string.about_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Column {
+                Row(Modifier.fillMaxWidth().clickable { showAboutDialog = true }.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Surface(Modifier.size(50.dp), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                        Icon(Icons.Rounded.Info, contentDescription = null, modifier = Modifier.padding(13.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(stringResource(R.string.about_app_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.about_app_description), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Row(Modifier.fillMaxWidth().clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(context.getString(R.string.about_source_url)))) }.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Surface(Modifier.size(50.dp), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                        Icon(Icons.Rounded.Code, contentDescription = null, modifier = Modifier.padding(13.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(stringResource(R.string.about_source_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.about_source_description), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAboutDialog) {
+        Dialog(onDismissRequest = { showAboutDialog = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(modifier = Modifier.fillMaxWidth(0.82f), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 8.dp, shadowElevation = 18.dp) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AndroidView(
+                        factory = { viewContext -> ImageView(viewContext).apply { setImageDrawable(viewContext.packageManager.getApplicationIcon(viewContext.packageName)) } },
+                        modifier = Modifier.size(72.dp).clip(RoundedCornerShape(20.dp))
+                    )
+                    Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.about_dialog_description), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    val primaryColor = MaterialTheme.colorScheme.primary
+                    val dynamicProperties = rememberLottieDynamicProperties(
+                        rememberLottieDynamicProperty(
+                            LottieProperty.COLOR,
+                            primaryColor.toArgb(),
+                            "**"
+                        )
+                    )
+
+                    val downloadComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.about_download))
+                    val downloadProgress by animateLottieCompositionAsState(
+                        composition = downloadComposition,
+                        iterations = LottieConstants.IterateForever,
+                        isPlaying = true,
+                        restartOnPlay = true
+                    )
+                    if (downloadComposition != null) {
+                        LottieAnimation(
+                            composition = downloadComposition,
+                            progress = { downloadProgress },
+                            contentScale = ContentScale.Fit,
+                            dynamicProperties = dynamicProperties,
+                            modifier = Modifier.size(width = 160.dp, height = 90.dp)
+                        )
+                    } else {
+                        Box(modifier = Modifier.size(width = 160.dp, height = 90.dp))
+                    }
+                    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainerLow, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                        Text(stringResource(R.string.about_version, BuildConfig.VERSION_NAME), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                        Text(stringResource(R.string.about_made_with), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        val heartComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.about_heart))
+                        val heartProgress by animateLottieCompositionAsState(
+                            composition = heartComposition,
+                            iterations = LottieConstants.IterateForever,
+                            isPlaying = true,
+                            restartOnPlay = true
+                        )
+                        if (heartComposition != null) {
+                            LottieAnimation(
+                                composition = heartComposition,
+                                progress = { heartProgress },
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        } else {
+                            Box(modifier = Modifier.size(26.dp))
+                        }
+                        Text(stringResource(R.string.about_by_sipun), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
                 }
             }
         }

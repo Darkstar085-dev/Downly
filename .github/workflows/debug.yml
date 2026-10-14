@@ -167,6 +167,10 @@ jobs:
           cp -a "$source/." "$destination/"
           echo "Verified Maven artifacts installed into this runner's Maven Local repository."
 
+      - name: Grant execute permission to Gradle wrapper
+        working-directory: Downly
+        run: chmod +x gradlew
+
       - name: Run unit tests
         working-directory: Downly
         run: ./gradlew :app:testDebugUnitTest --stacktrace

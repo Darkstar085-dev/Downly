@@ -1,38 +1,154 @@
 package com.sipun.downly.presentation.screens
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
+import android.os.Build
+import android.util.Size
+import android.net.Uri
+import android.provider.MediaStore
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.VideoFile
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.colorResource
+import com.sipun.downly.R
+import com.sipun.downly.presentation.theme.DownlyTheme
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import com.sipun.downly.data.MediaMode
 import com.sipun.downly.presentation.DownlyViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.text.DateFormat
+import java.util.Date
+
+private data class ExistingMediaDetails(
+    val name: String,
+    val mimeType: String,
+    val sizeBytes: Long?,
+    val modifiedMillis: Long?,
+    val durationMillis: Long?
+)
+
+private fun loadExistingMediaDetails(context: Context, uriString: String, fallbackName: String): ExistingMediaDetails {
+    val uri = Uri.parse(uriString)
+    val projection = arrayOf(
+        MediaStore.MediaColumns.DISPLAY_NAME,
+        MediaStore.MediaColumns.MIME_TYPE,
+        MediaStore.MediaColumns.SIZE,
+        MediaStore.MediaColumns.DATE_MODIFIED,
+        MediaStore.Video.VideoColumns.DURATION
+    )
+    return runCatching {
+        context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                fun longValue(column: String): Long? {
+                    val index = cursor.getColumnIndex(column)
+                    return if (index >= 0 && !cursor.isNull(index)) cursor.getLong(index) else null
+                }
+                val nameIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+                val mimeIndex = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
+                ExistingMediaDetails(
+                    name = if (nameIndex >= 0) cursor.getString(nameIndex) ?: fallbackName else fallbackName,
+                    mimeType = if (mimeIndex >= 0) cursor.getString(mimeIndex).orEmpty() else "",
+                    sizeBytes = longValue(MediaStore.MediaColumns.SIZE),
+                    modifiedMillis = longValue(MediaStore.MediaColumns.DATE_MODIFIED)?.times(1000),
+                    durationMillis = longValue(MediaStore.Video.VideoColumns.DURATION)
+                )
+            } else ExistingMediaDetails(fallbackName, "", null, null, null)
+        } ?: ExistingMediaDetails(fallbackName, "", null, null, null)
+    }.getOrElse { ExistingMediaDetails(fallbackName, "", null, null, null) }
+}
+
+
+private fun loadExistingVideoThumbnail(context: Context, uriString: String): Bitmap? {
+    val uri = Uri.parse(uriString)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val thumbnail = runCatching {
+            context.contentResolver.loadThumbnail(uri, Size(480, 320), null)
+        }.getOrNull()
+        if (thumbnail != null) return thumbnail
+    }
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(context, uri)
+        retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+    } catch (_: Exception) {
+        null
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+
+private fun formatFileSize(bytes: Long?): String {
+    if (bytes == null || bytes < 0L) return "Unknown"
+    if (bytes < 1024L) return "$bytes B"
+    val kb = bytes / 1024.0
+    if (kb < 1024.0) return String.format(java.util.Locale.getDefault(), "%.1f KB", kb)
+    val mb = kb / 1024.0
+    if (mb < 1024.0) return String.format(java.util.Locale.getDefault(), "%.1f MB", mb)
+    return String.format(java.util.Locale.getDefault(), "%.2f GB", mb / 1024.0)
+}
+
+private fun formatMediaDuration(milliseconds: Long?): String? {
+    if (milliseconds == null || milliseconds <= 0L) return null
+    val totalSeconds = milliseconds / 1000
+    return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,42 +163,8 @@ fun DownlyApp(vm: DownlyViewModel = viewModel()) {
         "Dark" -> true
         else -> isSystemInDarkTheme()
     }
-    val downlyColors = if (darkTheme) {
-        darkColorScheme(
-            primary = Color(0xFF79D8B0), onPrimary = Color(0xFF003824),
-            primaryContainer = Color(0xFF075C3D), onPrimaryContainer = Color(0xFFB8F5D8),
-            secondary = Color(0xFFB3CCBF), onSecondary = Color(0xFF20372C),
-            tertiary = Color(0xFFB9D8C9), background = Color(0xFF101512),
-            surface = Color(0xFF171E19), surfaceContainerLow = Color(0xFF1D2721),
-            surfaceContainer = Color(0xFF232D27), onSurface = Color(0xFFE7EEE9),
-            onSurfaceVariant = Color(0xFFA8B4AC), secondaryContainer = Color(0xFF294438),
-            onSecondaryContainer = Color(0xFFD5F4E4), outline = Color(0xFF607067),
-            outlineVariant = Color(0xFF3A4940)
-        )
-    } else {
-        lightColorScheme(
-            primary = Color(0xFF087B56), onPrimary = Color.White,
-            primaryContainer = Color(0xFFB9F0D6), onPrimaryContainer = Color(0xFF002113),
-            secondary = Color(0xFF426657), onSecondary = Color.White,
-            tertiary = Color(0xFF486458), background = Color(0xFFF6F8F6),
-            surface = Color(0xFFFCFDFC), surfaceContainerLow = Color(0xFFF0F4F1),
-            surfaceContainer = Color(0xFFE9EFEB), onSurface = Color(0xFF172520),
-            onSurfaceVariant = Color(0xFF596960), secondaryContainer = Color(0xFFD8F1E4),
-            onSecondaryContainer = Color(0xFF123E2D), outline = Color(0xFF75857B),
-            outlineVariant = Color(0xFFD2DED6)
-        )
-    }
 
-    MaterialTheme(
-        colorScheme = downlyColors,
-        shapes = Shapes(
-            extraSmall = RoundedCornerShape(8.dp),
-            small = RoundedCornerShape(12.dp),
-            medium = RoundedCornerShape(18.dp),
-            large = RoundedCornerShape(24.dp),
-            extraLarge = RoundedCornerShape(32.dp)
-        )
-    ) {
+    DownlyTheme(darkTheme = darkTheme) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
@@ -91,17 +173,17 @@ fun DownlyApp(vm: DownlyViewModel = viewModel()) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
                                 when (state.tab) {
-                                    1 -> "History"
-                                    2 -> "Settings"
+                                    1 -> stringResource(R.string.history_title)
+                                    2 -> stringResource(R.string.settings_title)
                                     else -> "Downly"
                                 },
                                 fontWeight = FontWeight.ExtraBold
                             )
                             Text(
                                 when (state.tab) {
-                                    1 -> "Your downloads, all in one place"
-                                    2 -> "Make Downly work for you"
-                                    else -> "Your personal media saver"
+                                    1 -> stringResource(R.string.history_subtitle)
+                                    2 -> stringResource(R.string.settings_subtitle)
+                                    else -> stringResource(R.string.home_tagline)
                                 },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -110,20 +192,13 @@ fun DownlyApp(vm: DownlyViewModel = viewModel()) {
                             )
                         }
                     },
-                    navigationIcon = {
-                        if (state.tab != 0) {
-                            IconButton(onClick = { vm.setTab(0) }) {
-                                Icon(Icons.Rounded.ArrowBack, contentDescription = "Back to Home")
-                            }
-                        }
-                    },
                     actions = {
                         if (state.tab == 0) {
                             IconButton(onClick = { vm.setTab(1) }) {
-                                Icon(Icons.Rounded.History, contentDescription = "Download history")
+                                Icon(Icons.Rounded.History, contentDescription = stringResource(R.string.download_history))
                             }
                             IconButton(onClick = { vm.setTab(2) }) {
-                                Icon(Icons.Rounded.Settings, contentDescription = "Settings")
+                                Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.settings_title))
                             }
                         }
                     },
@@ -141,5 +216,177 @@ fun DownlyApp(vm: DownlyViewModel = viewModel()) {
                 else -> SettingsScreen(state, vm, Modifier.padding(padding))
             }
         }
+
+        state.duplicatePrompt?.let { prompt ->
+            val targetFolder = if (prompt.mode == MediaMode.AUDIO) "Music/Downly" else "Movies/Downly"
+            val details = remember(prompt.existingUri, prompt.fileName) {
+                loadExistingMediaDetails(context, prompt.existingUri, prompt.fileName)
+            }
+            val isAudio = prompt.mode == MediaMode.AUDIO
+            val duration = formatMediaDuration(details.durationMillis)
+            val videoThumbnail by produceState<Bitmap?>(initialValue = null, prompt.existingUri, isAudio) {
+                value = if (isAudio) null else withContext(Dispatchers.IO) {
+                    loadExistingVideoThumbnail(context, prompt.existingUri)
+                }
+            }
+            Dialog(
+                onDismissRequest = { vm.resolveDuplicate(replaceExisting = false) },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 560.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp,
+                    shadowElevation = 18.dp
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(50))
+                                    .background(Color(0xFFFFE0D6)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("!", color = Color(0xFFE43D20), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(stringResource(R.string.file_already_exists), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "A file with this name is already in your library.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow
+                        ) {
+                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (isAudio) {
+                                        Box(
+                                            Modifier.size(80.dp).clip(RoundedCornerShape(14.dp))
+                                                .background(Color(0xFFEEDFFF)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Rounded.MusicNote, contentDescription = stringResource(R.string.audio_file), tint = colorResource(R.color.downly_audio_accent), modifier = Modifier.size(34.dp))
+                                        }
+                                    } else {
+                                        Box(
+                                            modifier = Modifier.size(width = 104.dp, height = 80.dp)
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(MaterialTheme.colorScheme.surfaceContainer),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (videoThumbnail != null) {
+                                                AsyncImage(
+                                                    model = videoThumbnail,
+                                                    contentDescription = stringResource(R.string.existing_video_thumbnail),
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            } else {
+                                                Icon(
+                                                    Icons.Rounded.VideoFile,
+                                                    contentDescription = stringResource(R.string.video_file),
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(38.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        Text(
+                                            details.name,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 3,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Icon(
+                                                Icons.Rounded.Folder,
+                                                contentDescription = stringResource(R.string.download_folder),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                targetFolder,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        if (!isAudio && duration != null) {
+                                            Text(duration, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                }
+                                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                                        DetailRow(Icons.Rounded.InsertDriveFile, "File type", if (isAudio) "MP3 (Audio)" else details.mimeType.substringAfter('/').uppercase().ifBlank { "Video" })
+                                        DetailRow(Icons.Rounded.Storage, "File size", formatFileSize(details.sizeBytes))
+                                        DetailRow(
+                                            Icons.Rounded.CalendarMonth,
+                                            "Last modified",
+                                            details.modifiedMillis?.let { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it)) } ?: "Unknown"
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Text(
+                            "Replace the existing file with this download, or keep the current one?",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = { vm.resolveDuplicate(replaceExisting = false) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(50),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 13.dp)
+                            ) {
+                                Text(stringResource(R.string.keep_existing), maxLines = 1, fontWeight = FontWeight.SemiBold)
+                            }
+                            Button(
+                                onClick = { vm.resolveDuplicate(replaceExisting = true) },
+                                modifier = Modifier.weight(1.12f),
+                                shape = RoundedCornerShape(50),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 13.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.replace_download), maxLines = 1, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailRow(icon: ImageVector, label: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp).size(20.dp))
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

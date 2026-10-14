@@ -23,7 +23,7 @@ Your personal media saver for Android.
     <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FDarkstar085-dev%2FDownly%2Fmain%2F.github%2Fbadges%2Fdownloads.json&style=for-the-badge" alt="APK downloads">
   </a>
   <a href="https://github.com/Darkstar085/Downly/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/Darkstar085/Downly?style=for-the-badge&color=E91E63" alt="MIT License">
+    <img src="https://img.shields.io/badge/License-MIT-E91E63?style=for-the-badge" alt="MIT License">
   </a>
 </p>
 

@@ -52,5 +52,6 @@ data class ScreenState(
     val tab: Int = 0,
     val history: List<DownloadRecord> = emptyList(),
     val duplicatePrompt: DuplicateDownloadPrompt? = null,
-    val themeMode: String = "System"
+    val themeMode: String = "System",
+    val dynamicColor: Boolean = false
 )

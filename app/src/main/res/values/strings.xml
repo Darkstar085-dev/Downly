@@ -9,6 +9,9 @@
     <string name="appearance_description">Personalize how Downly looks on your device.</string>
     <string name="theme_title">Theme</string>
     <string name="theme_description">Choose the look that feels right.</string>
+    <string name="dynamic_color_title">Dynamic color</string>
+    <string name="dynamic_color_description">Use colors from your wallpaper</string>
+    <string name="dynamic_color_unavailable">Available on Android 12 and later</string>
     <string name="theme_preference_title">Theme preference</string>
     <string name="theme_preference_description">Choose how Downly should appear.</string>
     <string name="theme_system">System</string>

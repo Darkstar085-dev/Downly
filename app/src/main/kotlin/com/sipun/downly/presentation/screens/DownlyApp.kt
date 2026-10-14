@@ -176,7 +176,7 @@ fun DownlyApp(
         else -> isSystemInDarkTheme()
     }
 
-    DownlyTheme(darkTheme = darkTheme) {
+    DownlyTheme(darkTheme = darkTheme, dynamicColor = state.dynamicColor) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {

@@ -58,10 +58,15 @@ class DownlyViewModel : ViewModel() {
     fun attach(context: Context) {
         if (appContext == null) {
             appContext = context.applicationContext
-            val savedTheme = appContext!!.getSharedPreferences("downly-settings", Context.MODE_PRIVATE)
-                .getString("theme_mode", "System") ?: "System"
+            val settings = appContext!!.getSharedPreferences("downly-settings", Context.MODE_PRIVATE)
+            val savedTheme = settings.getString("theme_mode", "System") ?: "System"
+            val dynamicColor = settings.getBoolean("dynamic_color", false)
             val restoredHistory = readHistory(appContext!!)
-            _state.value = _state.value.copy(themeMode = savedTheme, history = restoredHistory)
+            _state.value = _state.value.copy(
+                themeMode = savedTheme,
+                dynamicColor = dynamicColor,
+                history = restoredHistory
+            )
             historyLoaded = true
             connectivityManager = appContext!!.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             val callback = object : ConnectivityManager.NetworkCallback() {
@@ -85,6 +90,12 @@ class DownlyViewModel : ViewModel() {
         mutate { copy(themeMode = value) }
         appContext?.getSharedPreferences("downly-settings", Context.MODE_PRIVATE)
             ?.edit()?.putString("theme_mode", value)?.apply()
+    }
+
+    fun setDynamicColor(value: Boolean) {
+        mutate { copy(dynamicColor = value) }
+        appContext?.getSharedPreferences("downly-settings", Context.MODE_PRIVATE)
+            ?.edit()?.putBoolean("dynamic_color", value)?.apply()
     }
 
     fun initialize() {

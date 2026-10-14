@@ -418,14 +418,7 @@ class DownlyViewModel : ViewModel() {
             try {
                 val source = File(prompt.sourcePath)
                 if (replaceExisting) {
-                    val publicPath = publishReplacement(
-                        publish = { publishToMediaStore(context, source, prompt.mode) },
-                        removeExisting = {
-                            runCatching {
-                                context.contentResolver.delete(Uri.parse(prompt.existingUri), null, null)
-                            }
-                        }
-                    )
+                    val publicPath = replaceMediaStoreItem(context, Uri.parse(prompt.existingUri), source, prompt.existingPath)
                     source.delete()
                     setRecord(prompt.recordId) {
                         copy(status = DownloadStatus.COMPLETE, progress = 1f,
@@ -446,6 +439,33 @@ class DownlyViewModel : ViewModel() {
             } finally {
                 appContext?.let { persistHistory(it) }
             }
+        }
+    }
+
+    private fun replaceMediaStoreItem(context: Context, existingUri: Uri, source: File, existingPath: String): String {
+        val resolver = context.contentResolver
+        val backup = File.createTempFile("downly-replace-", ".bak", context.cacheDir)
+        try {
+            replaceWithRollback(
+                backup = {
+                    resolver.openInputStream(existingUri)?.use { input ->
+                        backup.outputStream().use { output -> input.copyTo(output) }
+                    } ?: throw IOException("Could not back up the existing download.")
+                },
+                replace = {
+                    resolver.openOutputStream(existingUri, "wt")?.use { output ->
+                        source.inputStream().use { input -> input.copyTo(output) }
+                    } ?: throw IOException("Could not write the replacement file.")
+                },
+                restore = {
+                    resolver.openOutputStream(existingUri, "wt")?.use { output ->
+                        backup.inputStream().use { input -> input.copyTo(output) }
+                    } ?: throw IOException("Could not restore the existing download.")
+                }
+            )
+            return existingPath
+        } finally {
+            backup.delete()
         }
     }
 
@@ -584,3 +604,4 @@ class DownlyViewModel : ViewModel() {
         persistenceWorker.shutdown()
     }
 }
+

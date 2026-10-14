@@ -1,0 +1,22 @@
+name: Downly Cleanup
+
+on:
+  schedule:
+    - cron: "30 4 1 * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Remove older workflow runs, artifacts and duplicate caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: bash .github/scripts/cleanup.sh

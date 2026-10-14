@@ -1,0 +1,200 @@
+name: Downly Debug
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: downly-debug
+  cancel-in-progress: true
+
+jobs:
+  publish-local-maven:
+    name: Build and publish local Maven artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout youtubedl-kotlin
+        uses: actions/checkout@v7
+        with:
+          repository: Darkstar085/youtubedl-kotlin
+          path: youtubedl-kotlin
+
+      - name: Checkout latest youtubedl-kotlin tag
+        run: |
+          set -euo pipefail
+          git -C youtubedl-kotlin fetch --tags --force
+          latest_tag="$(git -C youtubedl-kotlin tag --sort=-version:refname | head -n 1)"
+          test -n "$latest_tag" || { echo "::error::No youtubedl-kotlin tags found"; exit 1; }
+          git -C youtubedl-kotlin checkout --detach "$latest_tag"
+          echo "Using youtubedl-kotlin tag: $latest_tag"
+
+
+      - name: Checkout Downly dependency declarations
+        uses: actions/checkout@v7
+        with:
+          path: Downly
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Check Downly and downloader versions match
+        run: |
+          set -euo pipefail
+          source_version="$(sed -nE 's/^[[:space:]]*version = "([^"]+)".*/\1/p' youtubedl-kotlin/build.gradle.kts | head -n 1)"
+          test -n "$source_version" || { echo "::error::Could not read youtubedl-kotlin Maven version"; exit 1; }
+          mapfile -t dependency_versions < <(grep -oE 'io\.github\.darkstar085\.youtubedl-kotlin:(library|ffmpeg|aria2c):[^"]+' Downly/app/build.gradle.kts | sed 's/.*://')
+          test "${#dependency_versions[@]}" -eq 3 || { echo "::error::Expected all three downloader dependencies in Downly"; exit 1; }
+          for dependency_version in "${dependency_versions[@]}"; do
+            test "$dependency_version" = "$source_version" || {
+              echo "::error::Downly dependency version $dependency_version does not match youtubedl-kotlin version $source_version"
+              exit 1
+            }
+          done
+          echo "YTDL_VERSION=$source_version" >> "$GITHUB_ENV"
+          echo "Downly dependencies match youtubedl-kotlin version $source_version."
+
+      - name: Publish downloader modules to Maven Local
+        working-directory: youtubedl-kotlin
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :library:publishToMavenLocal :ffmpeg:publishToMavenLocal :aria2c:publishToMavenLocal --stacktrace
+
+      - name: Verify published artifacts before sharing
+        run: |
+          set -euo pipefail
+          repo="$HOME/.m2/repository/io/github/darkstar085/youtubedl-kotlin"
+          for module in library ffmpeg aria2c; do
+            artifact="$repo/$module/$YTDL_VERSION"
+            test -d "$artifact" || { echo "::error::Missing Maven artifact directory: $artifact"; exit 1; }
+            test -f "$artifact/$module-$YTDL_VERSION.pom" || { echo "::error::Missing POM for $module"; exit 1; }
+            test -f "$artifact/$module-$YTDL_VERSION.aar" || {
+              echo "::error::Missing Android AAR for $module"; exit 1
+            }
+          done
+
+      - name: Stage verified Maven repository
+        run: |
+          set -euo pipefail
+          source="$HOME/.m2/repository/io/github/darkstar085/youtubedl-kotlin"
+          test -d "$source"
+          mkdir -p "$RUNNER_TEMP/maven-repo"
+          cp -a "$source/." "$RUNNER_TEMP/maven-repo/"
+
+      - name: Upload Maven Local artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: downly-maven-local
+          path: ${{ runner.temp }}/maven-repo/
+          if-no-files-found: error
+          retention-days: 1
+  verify-local-maven:
+    name: Verify transferred Maven artifacts
+    needs: publish-local-maven
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Maven Local artifacts
+        uses: actions/download-artifact@v6
+        with:
+          name: downly-maven-local
+          path: ${{ runner.temp }}/maven-repo
+
+      - name: Verify all required modules
+        run: |
+          set -euo pipefail
+          repo="$RUNNER_TEMP/maven-repo"
+          YTDL_VERSION="$(find "$repo/library" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n 1)"
+          test -n "$YTDL_VERSION" || { echo "::error::Could not determine transferred Maven version"; exit 1; }
+          for module in library ffmpeg aria2c; do
+            artifact="$repo/$module/$YTDL_VERSION"
+            test -d "$artifact" || { echo "::error::Missing transferred module: $module"; exit 1; }
+            test -f "$artifact/$module-$YTDL_VERSION.pom" || { echo "::error::Missing transferred POM for $module"; exit 1; }
+            test -f "$artifact/$module-$YTDL_VERSION.aar" || {
+              echo "::error::Missing Android AAR for $module"; exit 1
+            }
+          done
+          echo "All three Maven modules were published, transferred, and verified."
+
+  debug:
+    name: Test and build debug APK
+    needs: verify-local-maven
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Downly
+        uses: actions/checkout@v7
+        with:
+          path: Downly
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Download verified Maven Local artifacts
+        uses: actions/download-artifact@v6
+        with:
+          name: downly-maven-local
+          path: ${{ runner.temp }}/maven-repo
+
+      - name: Install and verify Maven Local artifacts
+        run: |
+          set -euo pipefail
+          source="$RUNNER_TEMP/maven-repo"
+          YTDL_VERSION="$(find "$source/library" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n 1)"
+          test -n "$YTDL_VERSION" || { echo "::error::Could not determine transferred Maven version"; exit 1; }
+          destination="$HOME/.m2/repository/io/github/darkstar085/youtubedl-kotlin"
+          for module in library ffmpeg aria2c; do
+            artifact="$source/$module/$YTDL_VERSION"
+            test -f "$artifact/$module-$YTDL_VERSION.pom" || { echo "::error::Missing verified POM for $module"; exit 1; }
+            test -f "$artifact/$module-$YTDL_VERSION.aar" || {
+              echo "::error::Missing Android AAR for $module"; exit 1
+            }
+          done
+          mkdir -p "$destination"
+          cp -a "$source/." "$destination/"
+          echo "Verified Maven artifacts installed into this runner's Maven Local repository."
+
+      - name: Run unit tests
+        working-directory: Downly
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Build debug APK
+        working-directory: Downly
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Telegram uploader dependency
+        run: python -m pip install telethon
+
+      - name: Send debug APK to Telegram
+        working-directory: Downly
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$apk" || {
+            echo "::error::Debug APK not found"
+            exit 1
+          }
+          python .github/scripts/telegram.py "$apk" "Downly Debug APK"

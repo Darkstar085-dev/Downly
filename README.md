@@ -1,36 +1,208 @@
-# Downly
+<div align="center">
 
-Downly is an Android media downloader UI built with Jetpack Compose and the published YouTubeDL Kotlin Android Maven artifacts.
+<p align="center">
+  <img src=".github/assets/logo.png" alt="Downly logo" width="25%">
+</p>
+
+Your personal media saver for Android.
+
+<p>
+  <a href="https://github.com/Darkstar085/Downly">
+    <img src="https://img.shields.io/badge/Android-API%2030%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android API 30+">
+  </a>
+  <a href="https://developer.android.com/compose">
+    <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white" alt="Jetpack Compose">
+  </a>
+  <a href="https://m3.material.io/">
+    <img src="https://img.shields.io/badge/Design-Material%203-6750A4?style=for-the-badge&logo=materialdesign&logoColor=white" alt="Material 3">
+  </a>
+  <a href="https://github.com/Darkstar085/Downly/releases">
+    <img src="https://img.shields.io/github/v/release/Darkstar085/Downly?style=for-the-badge&label=Latest%20Release&color=00A982" alt="Latest release">
+  </a>
+  <a href="https://github.com/Darkstar085-dev/Downly/releases">
+    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FDarkstar085-dev%2FDownly%2Fmain%2F.github%2Fbadges%2Fdownloads.json&style=for-the-badge" alt="APK downloads">
+  </a>
+  <a href="https://github.com/Darkstar085/Downly/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/Darkstar085/Downly?style=for-the-badge&color=E91E63" alt="MIT License">
+  </a>
+</p>
+
+</div>
+
+---
+
+## About
+
+Downly is a simple Android media downloader built with Kotlin and Jetpack Compose. Paste a supported
+media link, review available video qualities or audio options, and save downloads to your device.
+The app also keeps a local download history and can check GitHub Releases for verified app updates.
+
+## Screenshots
+
+Add the screenshots in the blank slots below whenever they are ready.
+
+### Home & Smart Download
+
+<p align="center">
+  <img src=".github/assets/home.png" width="31%" alt="Homescreen">
+  <img src=".github/assets/media.png" width="31%" alt="Media">
+  <img src=".github/assets/media_selection.png" width="31%" alt="Media Selection">
+</p>
+
+### Download History
+
+<p align="center">
+  <img src=".github/assets/history.png" width="31%" alt="History">
+</p>
+
+### Settings & About
+
+<p align="center">
+  <img src=".github/assets/settings.png" width="31%" alt="Settings">
+  <img src=".github/assets/settings_about.png" width="31%" alt="About">
+</p>
+
+---
 
 ## Features
 
-- Paste an HTTP/HTTPS media URL or paste from the clipboard.
-- Fetch media title, uploader, and duration before downloading.
-- Download video in Best, 1080p, 720p, or 480p quality.
-- Extract audio as MP3.
-- View active progress, completion status, and errors in Activity.
-- Persist download history locally and retry downloader initialization from Settings.
-- Keep downloaded files in the app-specific `Downly` folder.
+### Media Downloads
 
-## Requirements
+- Paste an HTTP/HTTPS media link or paste a URL from the clipboard.
+- Fetch media title, uploader, duration, thumbnail and available formats when provided by the
+  source.
+- Choose from available video quality options.
+- Download audio using the supported audio formats.
+- Smart Download recommends a video quality using the available options and connection context.
+- View download progress, completion and error status.
 
-- Android Studio with Android SDK 37 installed.
+### Download History
+
+- Keep a local history of downloads.
+- Search downloaded items and filter between all items, videos and audio.
+- View media details such as file type, size and date.
+- Open a completed file in its folder or play it with a compatible app.
+- Clear finished and failed records.
+
+### Personalization
+
+- System, light and dark themes.
+- Optional Android 12+ Dynamic Color using Material You wallpaper colors.
+- Material 3 surfaces and responsive Compose layouts.
+
+### Updates
+
+- Check for new versions published through GitHub Releases.
+- Download and verify the release manifest and APK digest before installation.
+- Show update availability and download progress through the app's update flow.
+
+---
+
+## Downloads
+
+Download builds from [**GitHub Releases**](https://github.com/Darkstar085/Downly/releases/latest).
+
+Build the app locally using the instructions below.
+
+---
+
+## Design
+
+Downly is built with **Jetpack Compose**, **AndroidX**, and **Material 3**.
+
+The interface focuses on:
+
+- Readable typography and a clear visual hierarchy.
+- Rounded surfaces and theme-aware colors.
+- Straightforward video and audio choices.
+- A compact, searchable download history.
+- Android-native navigation, permissions and update installation.
+
+---
+
+## Tech Stack
+
+| Area                  | Technology                         |
+|-----------------------|------------------------------------|
+| Language              | Kotlin                             |
+| UI                    | Jetpack Compose                    |
+| Design                | Material 3                         |
+| Build                 | Gradle Kotlin DSL                  |
+| Android plugin        | Android Gradle Plugin              |
+| Serialization         | Kotlinx Serialization              |
+| Background work       | WorkManager                        |
+| Animations            | Lottie Compose                     |
+| Media download engine | YouTubeDL Kotlin Android artifacts |
+| Java                  | Java 17                            |
+| Minimum Android       | Android 11 / API 30                |
+| Compile / Target      | Android API 37                     |
+
+---
+
+## Project Structure
+
+```text
+app/
+├── build.gradle.kts
+└── src/
+    ├── main/
+    │   ├── kotlin/com/sipun/downly/
+    │   │   ├── core/update/
+    │   │   ├── data/
+    │   │   ├── presentation/
+    │   │   │   ├── screens/
+    │   │   │   └── theme/
+    │   │   └── utils/
+    │   └── res/
+    │       ├── drawable/
+    │       ├── mipmap-*/
+    │       ├── raw/
+    │       ├── values/
+    │       └── xml/
+    ├── test/
+    └── androidTest/
+```
+
+- **UI:** Download, History and Settings screens are implemented with Jetpack Compose.
+- **Update flow:** GitHub Release lookup, manifest validation, APK digest verification and installer
+  handling live under `core/update/`.
+- **Local data:** Download state and history are managed in the app; downloaded media stays in
+  app-specific/media storage.
+
+---
+
+## Building
+
+### Requirements
+
+- Android Studio and Android SDK 37.
 - JDK 17.
-- The `youtubedl-kotlin` modules must be published to your local Maven repository before building.
-- Android 11 or newer (minSdk 30).
-- Internet access for resolving Maven Central dependencies and downloading media.
+- Android 11 or later (API 30+).
+- The Downly YouTubeDL Kotlin artifacts must be available in the local Maven repository before
+  Gradle can resolve them.
 
-## Build
+### Prepare dependencies
 
-Before building, clone the `youtubedl-kotlin` library repository and publish its `library`, `ffmpeg`, and `aria2c` modules to your local Maven repository. Then open this project in Android Studio and sync Gradle, or run the build command below. A fresh clone does not contain those local Maven artifacts, so dependency resolution will fail until they are published locally.
+The app currently resolves these artifacts from `mavenLocal()`, not Maven Central:
 
-From a terminal with the Android SDK configured:
+- `io.github.darkstar085.youtubedl-kotlin:library:1.0.0`
+- `io.github.darkstar085.youtubedl-kotlin:ffmpeg:1.0.0`
+- `io.github.darkstar085.youtubedl-kotlin:aria2c:1.0.0`
+
+Publish the corresponding `library`, `ffmpeg` and `aria2c` modules from the matching
+`youtubedl-kotlin` source project to your local Maven repository before building. A fresh clone does
+not include these Maven artifacts. CI builds need the same artifacts installed or made available
+from a remote Maven repository.
+
+### Build a debug APK
+
+Linux / macOS:
 
 ```bash
 ./gradlew :app:assembleDebug
 ```
 
-On Windows, use:
+Windows PowerShell:
 
 ```powershell
 .\gradlew.bat :app:assembleDebug
@@ -38,42 +210,29 @@ On Windows, use:
 
 The debug APK is written to `app/build/outputs/apk/debug/`.
 
-## Maven dependencies
+---
 
-The app currently resolves these artifacts from `mavenLocal()` (not Maven Central):
+## Storage, Permissions & Privacy
 
-- `io.github.darkstar085.youtubedl-kotlin:library:1.0.0`
-- `io.github.darkstar085.youtubedl-kotlin:ffmpeg:1.0.0`
-- `io.github.darkstar085.youtubedl-kotlin:aria2c:1.0.0`
+Downloads are stored in app-specific/media storage. No broad storage permission is requested by this
+app. Clearing app data or uninstalling removes app-specific files.
 
-Publish these exact coordinates from the `youtubedl-kotlin` project to `~/.m2/repository` before building Downly. Other machines and CI need the same artifacts published locally, or the dependencies must be published to a remote Maven repository and the Gradle repository configuration updated.
+Downly uses network access to retrieve media, check supported sources and query GitHub Releases for
+updates. Source-site behavior and available formats can change. Some media may require
+authentication or may be unavailable.
 
-## Storage and permissions
+---
 
-Downloads are stored in app-specific storage under `Android/data/com.sipun.downly/files/Downly`. No broad storage permission is requested. Clearing app data or uninstalling the app removes these files.
+## License
 
-## Notes
+Downly is licensed under the [MIT License](LICENSE).
 
-- Availability depends on the source site's support in the bundled yt-dlp libraries and may change as sites change.
-- Some media may require authentication or may be unavailable.
-- Download only media you own or are authorized to save, and follow the source platform's terms.
-- The repository intentionally does not include an automatic GitHub Actions build workflow.
+---
 
-## Download limitations
+<div align="center">
 
-- Downloads currently run in the app process; Android may stop them if the process is killed. Persistent background downloads require a foreground service or an equivalent durable-work implementation.
-- The app-specific download folder may not be directly browsable by every file manager. Use Android's app storage tools or an appropriate file-sharing flow to access saved files.
-- A fresh-clone Gradle build and test run has not yet been verified for this repository.
+**Downly — Your personal media saver.**
 
-## Local release signing and optimized builds
+Made with ❤️ by Sipun.
 
-Release signing credentials are loaded from a local `keystore.properties` file at the repository root, with environment-variable fallback. This file and local keystore files are ignored by Git; never commit real passwords or a private JKS.
-
-1. Copy `keystore.properties.example` to `keystore.properties`.
-2. Fill in the real `storeFile`, `storePassword`, `keyAlias`, and `keyPassword` values.
-3. Put the JKS at the local path set by `storeFile` (relative paths are resolved from the repository root).
-4. Build a signed release with `./gradlew :app:assembleRelease`; use `./gradlew :app:bundleRelease` for an AAB.
-
-A release build requires valid local signing credentials; no real keystore or secret is checked into the repository. Environment-variable alternatives are `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
-
-The release variant enables R8 minification/obfuscation and resource shrinking using the optimized Android default rules plus `app/proguard-rules.pro`. Test the release build on a device before distribution, especially the native yt-dlp/FFmpeg library paths.
+</div>

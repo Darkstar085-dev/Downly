@@ -418,8 +418,14 @@ class DownlyViewModel : ViewModel() {
             try {
                 val source = File(prompt.sourcePath)
                 if (replaceExisting) {
-                    context.contentResolver.delete(Uri.parse(prompt.existingUri), null, null)
-                    val publicPath = publishToMediaStore(context, source, prompt.mode)
+                    val publicPath = publishReplacement(
+                        publish = { publishToMediaStore(context, source, prompt.mode) },
+                        removeExisting = {
+                            runCatching {
+                                context.contentResolver.delete(Uri.parse(prompt.existingUri), null, null)
+                            }
+                        }
+                    )
                     source.delete()
                     setRecord(prompt.recordId) {
                         copy(status = DownloadStatus.COMPLETE, progress = 1f,
@@ -480,7 +486,9 @@ class DownlyViewModel : ViewModel() {
             val publishedValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.IS_PENDING, 0)
             }
-            resolver.update(uri, publishedValues, null, null)
+            if (resolver.update(uri, publishedValues, null, null) <= 0) {
+                throw IOException("Could not publish the downloaded file.")
+            }
             return relativeDirectory + source.name
         } catch (error: Exception) {
             resolver.delete(uri, null, null)

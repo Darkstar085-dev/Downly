@@ -29,10 +29,20 @@ data class MediaPreview(
     val audioOptions: List<AudioOption> = emptyList()
 )
 
+data class DuplicateDownloadPrompt(
+    val recordId: String,
+    val sourcePath: String,
+    val existingUri: String,
+    val existingPath: String,
+    val mode: MediaMode,
+    val fileName: String
+)
+
 data class ScreenState(
     val url: String = "",
     val initialized: Boolean = false,
     val busy: Boolean = false,
+    val libraryProgress: Float? = null,
     val message: String = "Starting downloader…",
     val preview: MediaPreview? = null,
     val mode: MediaMode = MediaMode.VIDEO,
@@ -41,5 +51,6 @@ data class ScreenState(
     val recommendedQuality: String = "480p",
     val tab: Int = 0,
     val history: List<DownloadRecord> = emptyList(),
+    val duplicatePrompt: DuplicateDownloadPrompt? = null,
     val themeMode: String = "System"
 )

@@ -12,10 +12,6 @@ import java.net.URL
 import java.security.MessageDigest
 import java.util.zip.ZipInputStream
 
-/**
- * Downloads the latest versioned arm64 Libraries archive from the youtubedl-kotlin GitHub Release.
- * The Libraries archive contains data used by the downloader; executable native tools remain packaged in the APK.
- */
 object RuntimeBundleInstaller {
     private const val OWNER = "Darkstar085"
     private const val REPOSITORY = "youtubedl-kotlin"
@@ -26,31 +22,43 @@ object RuntimeBundleInstaller {
     private const val READ_TIMEOUT_MS = 45_000
 
     @Throws(IOException::class)
-    fun ensureInstalled(context: Context): File {
+    fun ensureInstalled(context: Context, onProgress: (Float?) -> Unit = {}): File {
         val root = File(context.noBackupFilesDir, "downly-runtime")
         if (!root.exists() && !root.mkdirs()) throw IOException("Cannot create Libraries directory")
 
-        // Resolve the asset from release metadata; GitHub may normalize spaces in asset names to dots.
-        val (assetName, downloadUrl) = latestReleaseAsset()
+        val release = try {
+            latestReleaseAsset()
+        } catch (error: IOException) {
+            findValidInstalledVersion(root)?.let { return it }
+            throw error
+        }
+        val (assetName, downloadUrl) = release
         val versionDirectoryName = assetName.removeSuffix(".zip")
         val installed = File(root, versionDirectoryName)
         val required = listOf("libpython.zip.so", "libffmpeg.zip.so", "libaria2c.zip.so", "SHA256SUMS")
-        if (required.all { File(installed, it).isFile } &&
+        val isInstalledValid = required.all { File(installed, it).isFile } &&
             runCatching { verifyChecksums(installed, File(installed, "SHA256SUMS")) }.getOrDefault(false)
-        ) return installed
+        if (isInstalledValid) {
+            removeObsoleteVersions(root, versionDirectoryName)
+            return installed
+        }
 
         val downloaded = File(root, "$assetName.part")
         val staging = File(root, ".$versionDirectoryName-staging")
         try {
-            download(downloadUrl, downloaded)
+            onProgress(null)
+            download(downloadUrl, downloaded, onProgress)
+            onProgress(0.90f)
             deleteRecursively(staging)
             if (!staging.mkdirs()) throw IOException("Cannot create Libraries staging directory")
             try {
                 extractBundle(downloaded, staging)
+                onProgress(0.96f)
                 verifyChecksums(staging, File(staging, "SHA256SUMS"))
                 listOf("libpython.zip.so", "libffmpeg.zip.so", "libaria2c.zip.so").forEach {
                     validateArchive(File(staging, it))
                 }
+                onProgress(0.99f)
                 val previous = File(root, ".$versionDirectoryName-previous")
                 deleteRecursively(previous)
                 if (installed.exists() && !installed.renameTo(previous)) {
@@ -61,6 +69,7 @@ object RuntimeBundleInstaller {
                     throw IOException("Cannot activate downloaded Libraries archive")
                 }
                 deleteRecursively(previous)
+                removeObsoleteVersions(root, versionDirectoryName)
             } finally {
                 deleteRecursively(staging)
             }
@@ -68,6 +77,33 @@ object RuntimeBundleInstaller {
             downloaded.delete()
         }
         return installed
+    }
+
+    private fun findValidInstalledVersion(root: File): File? {
+        val required = listOf("libpython.zip.so", "libffmpeg.zip.so", "libaria2c.zip.so", "SHA256SUMS")
+        val versionDirectory = Regex("^libraries_v[0-9][A-Za-z0-9._+-]*$")
+        return root.listFiles()
+            ?.asSequence()
+            ?.filter { it.isDirectory && versionDirectory.matches(it.name) }
+            ?.sortedByDescending { it.lastModified() }
+            ?.firstOrNull { directory ->
+                required.all { File(directory, it).isFile } &&
+                    runCatching {
+                        verifyChecksums(directory, File(directory, "SHA256SUMS"))
+                    }.getOrDefault(false)
+            }
+    }
+
+    private fun removeObsoleteVersions(root: File, keepDirectoryName: String) {
+        val versionDirectory = Regex("^libraries_v[0-9][A-Za-z0-9._+-]*$")
+        root.listFiles()?.forEach { candidate ->
+            if (candidate.isDirectory &&
+                candidate.name != keepDirectoryName &&
+                versionDirectory.matches(candidate.name)
+            ) {
+                deleteRecursively(candidate)
+            }
+        }
     }
 
     private fun latestReleaseAsset(): Pair<String, String> {
@@ -104,7 +140,7 @@ object RuntimeBundleInstaller {
         }
     }
 
-    private fun download(address: String, destination: File) {
+    private fun download(address: String, destination: File, onProgress: (Float?) -> Unit) {
         var connection: HttpURLConnection? = null
         try {
             connection = (URL(address).openConnection() as HttpURLConnection).apply {
@@ -119,6 +155,7 @@ object RuntimeBundleInstaller {
             if (connection.contentLengthLong > MAX_BUNDLE_BYTES) {
                 throw IOException("Libraries archive is unexpectedly large")
             }
+            val expectedBytes = connection.contentLengthLong
             connection.inputStream.use { input ->
                 FileOutputStream(destination).use { output ->
                     val buffer = ByteArray(64 * 1024)
@@ -129,6 +166,7 @@ object RuntimeBundleInstaller {
                         total += count
                         if (total > MAX_BUNDLE_BYTES) throw IOException("Libraries archive exceeds size limit")
                         output.write(buffer, 0, count)
+                        onProgress(if (expectedBytes > 0L) (total.toFloat() / expectedBytes.toFloat()).coerceIn(0f, 1f) * 0.85f else null)
                     }
                     output.fd.sync()
                 }

@@ -1,16 +1,21 @@
 package com.sipun.downly.presentation
 
+import android.content.ContentValues
+import android.content.ContentUris
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.Environment
+import android.provider.MediaStore
 import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.ViewModel
 import com.sipun.downly.runtime.RuntimeBundleInstaller
 import com.sipun.downly.data.DownloadRecord
 import com.sipun.downly.data.DownloadStatus
+import com.sipun.downly.data.DuplicateDownloadPrompt
 import com.sipun.downly.data.MediaMode
 import com.sipun.downly.data.MediaPreview
 import com.sipun.downly.data.ScreenState
@@ -23,6 +28,7 @@ import com.sipun.downly.utils.formatDuration
 import com.sipun.downly.utils.friendlyError
 import com.sipun.downly.utils.isValidUrl
 import com.sipun.downly.utils.recommendQuality
+import com.sipun.downly.utils.recommendAudioOption
 import com.sipun.youtubedl_android.YoutubeDL
 import com.sipun.youtubedl_android.YoutubeDLRequest
 import com.sipun.youtubedl_android.mapper.VideoInfo
@@ -42,6 +48,10 @@ class DownlyViewModel : ViewModel() {
     private val _state = MutableStateFlow(ScreenState())
     val state: StateFlow<ScreenState> = _state.asStateFlow()
     private var appContext: Context? = null
+    private val initializationLock = Any()
+    @Volatile private var initializationInFlight = false
+    @Volatile private var initializationComplete = false
+    @Volatile private var historyLoaded = false
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
@@ -50,7 +60,9 @@ class DownlyViewModel : ViewModel() {
             appContext = context.applicationContext
             val savedTheme = appContext!!.getSharedPreferences("downly-settings", Context.MODE_PRIVATE)
                 .getString("theme_mode", "System") ?: "System"
-            _state.value = _state.value.copy(themeMode = savedTheme)
+            val restoredHistory = readHistory(appContext!!)
+            _state.value = _state.value.copy(themeMode = savedTheme, history = restoredHistory)
+            historyLoaded = true
             connectivityManager = appContext!!.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             val callback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) = updateConnectionType()
@@ -76,13 +88,22 @@ class DownlyViewModel : ViewModel() {
     }
 
     fun initialize() {
-        if (_state.value.initialized || _state.value.busy) return
-        mutate { copy(busy = true, message = "Preparing Libraries…") }
+        synchronized(initializationLock) {
+            if (initializationComplete || initializationInFlight || _state.value.initialized) return
+            initializationInFlight = true
+        }
+        mutate { copy(busy = true, libraryProgress = null, message = "Preparing Libraries…") }
         worker.execute {
-            val context = appContext ?: return@execute
+            val context = appContext
+            if (context == null) {
+                synchronized(initializationLock) { initializationInFlight = false }
+                return@execute
+            }
             try {
-                mutate { copy(message = "Downloading Libraries archive…") }
-                val runtimeDir = RuntimeBundleInstaller.ensureInstalled(context)
+                mutate { copy(message = "Downloading Libraries archive…", libraryProgress = null) }
+                val runtimeDir = RuntimeBundleInstaller.ensureInstalled(context) { progress ->
+                    mutate { copy(libraryProgress = progress) }
+                }
                 com.sipun.ffmpeg.FFmpeg.setRuntimeArchiveDirectory(runtimeDir)
                 com.sipun.aria2c.Aria2c.setRuntimeArchiveDirectory(runtimeDir)
                 YoutubeDL.setRuntimeArchiveDirectory(runtimeDir)
@@ -153,10 +174,17 @@ class DownlyViewModel : ViewModel() {
                 com.sipun.ffmpeg.FFmpeg.init(context)
                 runCatching { com.sipun.aria2c.Aria2c.init(context) }
                 YoutubeDL.init(context)
-                mutate { copy(initialized = true, busy = false, message = "Downloader ready") }
-                loadHistory(context)
+                synchronized(initializationLock) {
+                    initializationComplete = true
+                    initializationInFlight = false
+                }
+                mutate { copy(initialized = true, busy = false, libraryProgress = 1f, message = "Downloader ready") }
             } catch (error: Exception) {
-                mutate { copy(initialized = false, busy = false, message = friendlyError(error)) }
+                synchronized(initializationLock) {
+                    initializationInFlight = false
+                    initializationComplete = false
+                }
+                mutate { copy(initialized = false, busy = false, libraryProgress = null, message = friendlyError(error)) }
             }
         }
     }
@@ -191,6 +219,20 @@ class DownlyViewModel : ViewModel() {
                 mutate { copy(busy = false, message = friendlyError(error)) }
             }
         }
+    }
+
+    fun startSmartDownload() {
+        val current = _state.value
+        val selectedQuality = when (current.mode) {
+            MediaMode.VIDEO -> current.preview?.qualityOptions
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { recommendQuality(it, current.connectionType) }
+                ?: current.recommendedQuality
+            MediaMode.AUDIO -> current.preview?.audioOptions
+                ?.let { recommendAudioOption(it, current.connectionType) }
+                ?.let { "audio:${it.formatId}" }
+        }
+        startDownload(selectedQuality)
     }
 
     fun startDownload(qualityOverride: String? = null) {
@@ -229,13 +271,13 @@ class DownlyViewModel : ViewModel() {
         try {
             setRecord(record.id) { copy(status = DownloadStatus.DOWNLOADING, detail = "Starting yt-dlp…") }
             val context = appContext ?: error("Application context is unavailable.")
-            val folder = File(context.getExternalFilesDir(null), "Downly")
+            val root = File(context.getExternalFilesDir(null) ?: context.filesDir, "Downly")
+            val folder = File(root, record.id)
             if (!folder.exists() && !folder.mkdirs()) error("Unable to create download folder.")
             val request = YoutubeDLRequest(record.url)
-                .addOption("-o", File(folder, "%(title).180B [%(id)s].%(ext)s").absolutePath)
+                .addOption("-o", File(folder, "%(title).140B - %(id)s.%(ext)s").absolutePath)
                 .addOption("--newline")
                 .addOption("--no-playlist")
-                .addOption("--restrict-filenames")
             if (mode == MediaMode.AUDIO) {
                 val audioFormatId = quality.takeIf { it.startsWith("audio:") }?.removePrefix("audio:")
                 if (!audioFormatId.isNullOrBlank()) request.addOption("-f", audioFormatId)
@@ -256,16 +298,182 @@ class DownlyViewModel : ViewModel() {
                         detail = line.take(150).ifBlank { if (eta > 0) "About ${eta}s left" else "Downloading…" })
                 }
             }
-            val saved = folder.listFiles()?.filter { it.isFile && it.lastModified() >= record.timestamp }?.maxByOrNull { it.lastModified() }
+            val saved = folder.listFiles()?.filter { file ->
+                file.isFile && !file.name.endsWith(".part") &&
+                    !file.name.endsWith(".ytdl") && !file.name.endsWith(".temp")
+            }?.maxByOrNull { it.lastModified() }
+                ?: throw IOException("yt-dlp finished, but no completed output file was found in its download directory.")
+            val normalized = normalizeDownloadedFileName(saved, record.title)
+            val outputFile = if (normalized != saved.name) {
+                val renamed = File(saved.parentFile, normalized)
+                if (saved.renameTo(renamed)) renamed else saved
+            } else saved
+            val duplicate = findExistingMedia(context, outputFile.name, mode)
+            if (duplicate != null) {
+                mutate {
+                    copy(
+                        duplicatePrompt = DuplicateDownloadPrompt(
+                            recordId = record.id,
+                            sourcePath = outputFile.absolutePath,
+                            existingUri = duplicate.first.toString(),
+                            existingPath = duplicate.second,
+                            mode = mode,
+                            fileName = outputFile.name
+                        ),
+                        message = "This file is already downloaded. Choose whether to replace it."
+                    )
+                }
+                setRecord(record.id) { copy(detail = "Waiting for duplicate choice…") }
+                return
+            }
+            val publicPath = publishToMediaStore(context, outputFile, mode)
+            outputFile.delete()
             setRecord(record.id) {
                 copy(status = DownloadStatus.COMPLETE, progress = 1f, detail = "Download complete",
-                    filePath = saved?.absolutePath)
+                    filePath = publicPath)
             }
         } catch (error: Exception) {
             val status = if (error is YoutubeDL.CanceledException) DownloadStatus.CANCELLED else DownloadStatus.FAILED
             setRecord(record.id) { copy(status = status, detail = friendlyError(error)) }
         } finally {
             appContext?.let { persistHistory(it) }
+        }
+    }
+
+    private fun normalizeDownloadedFileName(file: File, title: String): String {
+        val id = file.nameWithoutExtension.substringAfterLast(" - ", "").trim()
+            .takeIf { it.isNotBlank() && it != file.nameWithoutExtension }
+        val cleanTitle = title
+            .replace(Regex("#[\\p{L}\\p{N}_-]+"), " ")
+            .replace('_', ' ')
+            .replace(Regex("[\\p{Cntrl}<>:\"/\\\\|?*]"), " ")
+            .replace(Regex("[^\\p{L}\\p{N} .()'-]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("^[\\s._-]+|[\\s._-]+$"), "")
+            .take(100)
+            .trimEnd()
+            .ifBlank { "Downly download" }
+            .let { value ->
+                val letters = value.filter { it.isLetter() }
+                if (letters.isNotEmpty() && letters.all { it.isUpperCase() }) {
+                    value.lowercase().split(' ').joinToString(" ") { word ->
+                        word.replaceFirstChar { char ->
+                            if (char.isLowerCase()) char.titlecase() else char.toString()
+                        }
+                    }
+                } else value
+            }
+        val suffix = id?.let { " [$it]" }.orEmpty()
+        return cleanTitle + suffix + "." + file.extension.lowercase().ifBlank { "mp4" }
+    }
+
+    private fun findExistingMedia(context: Context, fileName: String, mode: MediaMode): Pair<Uri, String>? {
+        val relativeDirectory = if (mode == MediaMode.AUDIO) {
+            Environment.DIRECTORY_MUSIC + "/Downly/"
+        } else {
+            Environment.DIRECTORY_MOVIES + "/Downly/"
+        }
+        val collection = if (mode == MediaMode.AUDIO) {
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        } else {
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        }
+        val mediaId = Regex("\\[([^]]+)]\\.").find(fileName)?.groupValues?.getOrNull(1)
+        val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME)
+        val selection = "${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
+        context.contentResolver.query(
+            collection, projection, selection, arrayOf(relativeDirectory), null
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME))
+                val matchesName = name.equals(fileName, ignoreCase = true)
+                val matchesId = mediaId != null &&
+                    (name.contains(" - $mediaId.", ignoreCase = true) ||
+                     name.contains("[$mediaId].", ignoreCase = true))
+                if (matchesName || matchesId) {
+                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
+                    val uri = ContentUris.withAppendedId(collection, id)
+                    return uri to (relativeDirectory + name)
+                }
+            }
+        }
+        return null
+    }
+
+    fun resolveDuplicate(replaceExisting: Boolean) {
+        val prompt = _state.value.duplicatePrompt ?: return
+        val context = appContext ?: return
+        worker.execute {
+            try {
+                val source = File(prompt.sourcePath)
+                if (replaceExisting) {
+                    context.contentResolver.delete(Uri.parse(prompt.existingUri), null, null)
+                    val publicPath = publishToMediaStore(context, source, prompt.mode)
+                    source.delete()
+                    setRecord(prompt.recordId) {
+                        copy(status = DownloadStatus.COMPLETE, progress = 1f,
+                            detail = "Download complete · replaced existing file", filePath = publicPath)
+                    }
+                    mutate { copy(duplicatePrompt = null, message = "Existing file replaced") }
+                } else {
+                    source.delete()
+                    setRecord(prompt.recordId) {
+                        copy(status = DownloadStatus.COMPLETE, progress = 1f,
+                            detail = "Already downloaded · kept existing file", filePath = prompt.existingPath)
+                    }
+                    mutate { copy(duplicatePrompt = null, message = "Kept the existing download") }
+                }
+            } catch (error: Exception) {
+                mutate { copy(duplicatePrompt = null, message = friendlyError(error)) }
+                setRecord(prompt.recordId) { copy(status = DownloadStatus.FAILED, detail = friendlyError(error)) }
+            } finally {
+                appContext?.let { persistHistory(it) }
+            }
+        }
+    }
+
+    private fun publishToMediaStore(context: Context, source: File, mode: MediaMode): String {
+        val resolver = context.contentResolver
+        val relativeDirectory = if (mode == MediaMode.AUDIO) {
+            Environment.DIRECTORY_MUSIC + "/Downly/"
+        } else {
+            Environment.DIRECTORY_MOVIES + "/Downly/"
+        }
+        val mimeType = if (mode == MediaMode.AUDIO) {
+            "audio/mpeg"
+        } else {
+            when (source.extension.lowercase()) {
+                "webm" -> "video/webm"
+                "mkv" -> "video/x-matroska"
+                "mov" -> "video/quicktime"
+                else -> "video/mp4"
+            }
+        }
+        val collection = if (mode == MediaMode.AUDIO) {
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        } else {
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        }
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, source.name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativeDirectory)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(collection, values)
+            ?: throw IOException("Could not create the file in $relativeDirectory")
+        try {
+            resolver.openOutputStream(uri, "w")?.use { output ->
+                source.inputStream().use { input -> input.copyTo(output) }
+            } ?: throw IOException("Could not write the downloaded file.")
+            val publishedValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }
+            resolver.update(uri, publishedValues, null, null)
+            return relativeDirectory + source.name
+        } catch (error: Exception) {
+            resolver.delete(uri, null, null)
+            throw error
         }
     }
 
@@ -293,10 +501,10 @@ class DownlyViewModel : ViewModel() {
         }
     }
 
-    private fun loadHistory(context: Context) {
+    private fun readHistory(context: Context): List<DownloadRecord> {
         val stored = context.getSharedPreferences("downly-history", Context.MODE_PRIVATE)
-            .getString("records", null) ?: return
-        val records = stored.lineSequence().mapNotNull { line ->
+            .getString("records", null) ?: return emptyList()
+        return stored.lineSequence().mapNotNull { line ->
             val p = line.split('|')
             if (p.size < 8) return@mapNotNull null
             runCatching {
@@ -311,10 +519,10 @@ class DownlyViewModel : ViewModel() {
                 )
             }.getOrNull()
         }.toList()
-        mutate { copy(history = records) }
     }
 
     private fun persistHistory(context: Context, snapshot: List<DownloadRecord> = _state.value.history) {
+        if (!historyLoaded) return
         val encoded = snapshot.joinToString("\n") { item ->
             listOf(item.id, encodeText(item.url), encodeText(item.title), item.status.name,
                 item.progress.toString(), encodeText(item.detail), item.filePath?.let(::encodeText) ?: "-",
@@ -322,7 +530,7 @@ class DownlyViewModel : ViewModel() {
         }
         persistenceWorker.execute {
             context.getSharedPreferences("downly-history", Context.MODE_PRIVATE).edit()
-                .putString("records", encoded).apply()
+                .putString("records", encoded).commit()
         }
     }
 

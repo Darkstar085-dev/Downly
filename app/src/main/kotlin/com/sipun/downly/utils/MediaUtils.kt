@@ -3,13 +3,10 @@ package com.sipun.downly.utils
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.ui.graphics.Color
 import com.sipun.downly.data.AudioOption
 import com.sipun.downly.data.QualityOption
 import com.sipun.youtubedl_android.mapper.VideoFormat
 import java.util.Locale
-
-val DownlyGreen = Color(0xFF119B70)
 
 fun buildQualityOptions(formats: List<VideoFormat>): List<QualityOption> {
     val videoFormats = formats.filter { it.height > 0 && it.vcodec?.lowercase() != "none" }
@@ -39,6 +36,18 @@ fun buildAudioOptions(formats: List<VideoFormat>): List<AudioOption> {
         }
         .sortedWith(compareByDescending<AudioOption> { it.bitrate }.thenByDescending { it.estimatedBytes ?: 0L })
         .distinctBy { "${it.bitrate}:${it.quality.substringAfter(" · ")}" }
+}
+
+fun recommendAudioOption(options: List<AudioOption>, connectionType: String): AudioOption? {
+    if (options.isEmpty()) return null
+    if (connectionType == "Wi-Fi" || connectionType == "Ethernet") {
+        return options.maxWithOrNull(compareBy<AudioOption> { it.bitrate }.thenBy { it.estimatedBytes ?: 0L })
+            ?: options.first()
+    }
+    val targetBitrate = if (connectionType == "Mobile data") 128 else 96
+    return options.filter { it.bitrate in 1..targetBitrate }
+        .maxWithOrNull(compareBy<AudioOption> { it.bitrate }.thenBy { it.estimatedBytes ?: 0L })
+        ?: options.minByOrNull { it.bitrate }
 }
 
 fun defaultQualityFor(connectionType: String): String = when (connectionType) {

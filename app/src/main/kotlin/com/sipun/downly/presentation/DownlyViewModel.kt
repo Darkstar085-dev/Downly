@@ -39,6 +39,40 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+private object RuntimeLibraryDirectoryConfiguration {
+    private var ffmpegDirectory: String? = null
+    private var aria2cDirectory: String? = null
+    private var youtubeDlDirectory: String? = null
+
+    @Synchronized
+    fun configure(directory: File) {
+        val path = directory.canonicalPath
+
+        check(ffmpegDirectory == null || ffmpegDirectory == path) {
+            "Runtime libraries changed during this process. Restart Downly to apply the update."
+        }
+        check(aria2cDirectory == null || aria2cDirectory == path) {
+            "Runtime libraries changed during this process. Restart Downly to apply the update."
+        }
+        check(youtubeDlDirectory == null || youtubeDlDirectory == path) {
+            "Runtime libraries changed during this process. Restart Downly to apply the update."
+        }
+
+        if (ffmpegDirectory == null) {
+            com.sipun.ffmpeg.FFmpeg.setRuntimeArchiveDirectory(directory)
+            ffmpegDirectory = path
+        }
+        if (aria2cDirectory == null) {
+            com.sipun.aria2c.Aria2c.setRuntimeArchiveDirectory(directory)
+            aria2cDirectory = path
+        }
+        if (youtubeDlDirectory == null) {
+            YoutubeDL.setRuntimeArchiveDirectory(directory)
+            youtubeDlDirectory = path
+        }
+    }
+}
+
 class DownlyViewModel : ViewModel() {
     private val worker = Executors.newSingleThreadExecutor()
     private val cancelledIds = ConcurrentHashMap.newKeySet<String>()
@@ -115,9 +149,7 @@ class DownlyViewModel : ViewModel() {
                 val runtimeDir = RuntimeBundleInstaller.ensureInstalled(context) { progress ->
                     mutate { copy(libraryProgress = progress) }
                 }
-                com.sipun.ffmpeg.FFmpeg.setRuntimeArchiveDirectory(runtimeDir)
-                com.sipun.aria2c.Aria2c.setRuntimeArchiveDirectory(runtimeDir)
-                YoutubeDL.setRuntimeArchiveDirectory(runtimeDir)
+                RuntimeLibraryDirectoryConfiguration.configure(runtimeDir)
                 val baseDir = File(context.noBackupFilesDir, "youtubedl-android")
                 val packagesDir = File(baseDir, "packages")
 
@@ -393,9 +425,9 @@ class DownlyViewModel : ViewModel() {
 
     private fun findExistingMedia(context: Context, fileName: String, mode: MediaMode, mediaId: String?): Pair<Uri, String>? {
         val relativeDirectory = if (mode == MediaMode.AUDIO) {
-            Environment.DIRECTORY_MUSIC + "/Downly/"
+            Environment.DIRECTORY_DOWNLOADS + "/Downly/Music/"
         } else {
-            Environment.DIRECTORY_MOVIES + "/Downly/"
+            Environment.DIRECTORY_DOWNLOADS + "/Downly/Videos/"
         }
         val collection = if (mode == MediaMode.AUDIO) {
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI

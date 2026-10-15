@@ -18,28 +18,45 @@ object RuntimeBundleInstaller {
     private const val RELEASE_API =
         "https://api.github.com/repos/$OWNER/$REPOSITORY/releases/latest"
     private const val MAX_BUNDLE_BYTES = 100L * 1024L * 1024L
+    @Volatile private var processInstalledDirectory: File? = null
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 45_000
 
     @Throws(IOException::class)
     fun ensureInstalled(context: Context, onProgress: (Float?) -> Unit = {}): File {
-        val root = File(context.noBackupFilesDir, "downly-runtime")
+        processInstalledDirectory?.let { cached ->
+            if (isInstalledValid(cached)) return cached
+            processInstalledDirectory = null
+        }
+        val root = File(context.noBackupFilesDir, ".libraries")
+        val legacyRoot = File(context.noBackupFilesDir, "downly-runtime")
+        if (findValidInstalledVersion(root) == null &&
+            findValidInstalledVersion(legacyRoot) != null
+        ) {
+            if (root.exists()) deleteRecursively(root)
+            if (!legacyRoot.renameTo(root)) {
+                throw IOException("Cannot migrate existing Libraries directory")
+            }
+        } else if (findValidInstalledVersion(root) != null && legacyRoot.exists()) {
+            deleteRecursively(legacyRoot)
+        }
         if (!root.exists() && !root.mkdirs()) throw IOException("Cannot create Libraries directory")
 
         val release = try {
             latestReleaseAsset()
         } catch (error: IOException) {
-            findValidInstalledVersion(root)?.let { return it }
+            findValidInstalledVersion(root)?.let {
+                processInstalledDirectory = it
+                return it
+            }
             throw error
         }
         val (assetName, downloadUrl) = release
         val versionDirectoryName = assetName.removeSuffix(".zip")
         val installed = File(root, versionDirectoryName)
-        val required = listOf("libpython.zip.so", "libffmpeg.zip.so", "libaria2c.zip.so", "SHA256SUMS")
-        val isInstalledValid = required.all { File(installed, it).isFile } &&
-            runCatching { verifyChecksums(installed, File(installed, "SHA256SUMS")) }.getOrDefault(false)
-        if (isInstalledValid) {
+        if (isInstalledValid(installed)) {
             removeObsoleteVersions(root, versionDirectoryName)
+            processInstalledDirectory = installed
             return installed
         }
 
@@ -76,7 +93,14 @@ object RuntimeBundleInstaller {
         } finally {
             downloaded.delete()
         }
+        processInstalledDirectory = installed
         return installed
+    }
+
+    private fun isInstalledValid(directory: File): Boolean {
+        val required = listOf("libpython.zip.so", "libffmpeg.zip.so", "libaria2c.zip.so", "SHA256SUMS")
+        return required.all { File(directory, it).isFile } &&
+            runCatching { verifyChecksums(directory, File(directory, "SHA256SUMS")) }.getOrDefault(false)
     }
 
     private fun findValidInstalledVersion(root: File): File? {

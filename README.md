@@ -17,7 +17,7 @@ Your personal media saver for Android.
     <img src="https://img.shields.io/badge/Design-Material%203-6750A4?style=for-the-badge&logo=materialdesign&logoColor=white" alt="Material 3">
   </a>
   <a href="https://github.com/Darkstar085/Downly/releases">
-    <img src="https://img.shields.io/github/v/release/Darkstar085/Downly?style=for-the-badge&label=Latest%20Release&color=00A982" alt="Latest release">
+    <img src="https://img.shields.io/github/v/release/Darkstar085/Downly?style=for-the-badge&label=Latest%20Release&color=FF6F00" alt="Latest release">
   </a>
   <a href="https://github.com/Darkstar085-dev/Downly/releases">
     <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FDarkstar085-dev%2FDownly%2Fmain%2F.github%2Fbadges%2Fdownloads.json&style=for-the-badge" alt="APK downloads">
@@ -33,26 +33,25 @@ Your personal media saver for Android.
 
 ## About
 
-Downly is a simple Android media downloader built with Kotlin and Jetpack Compose. Paste a supported
-media link, review available video qualities or audio options, and save downloads to your device.
-The app also keeps a local download history and can check GitHub Releases for verified app updates.
+Downly is an Android media downloader built with Kotlin and Jetpack Compose. Paste a supported
+media link, review the available video qualities or audio options, and save media to your device.
 
 ## Screenshots
 
-Add the screenshots in the blank slots below whenever they are ready.
-
-### Home & Smart Download
+### Home & Media Selection
 
 <p align="center">
-  <img src=".github/assets/home.png" width="31%" alt="Homescreen">
-  <img src=".github/assets/media.png" width="31%" alt="Media">
-  <img src=".github/assets/media_selection.png" width="31%" alt="Media Selection">
+  <img src=".github/assets/home.png" width="31%" alt="Home screen">
+  <img src=".github/assets/media.png" width="31%" alt="Media details">
+  <img src=".github/assets/media_video.png" width="31%" alt="Media video">
+  <img src=".github/assets/media_audio.png" width="31%" alt="Media audio">
 </p>
 
 ### Download History
 
 <p align="center">
-  <img src=".github/assets/history.png" width="31%" alt="History">
+  <img src=".github/assets/history_empty.png" width="31%" alt="Empty history">
+  <img src=".github/assets/history.png" width="31%" alt="Download history">
 </p>
 
 ### Settings & About
@@ -69,31 +68,34 @@ Add the screenshots in the blank slots below whenever they are ready.
 ### Media Downloads
 
 - Paste an HTTP/HTTPS media link or paste a URL from the clipboard.
-- Fetch media title, uploader, duration, thumbnail and available formats when provided by the
+- Fetch media title, uploader, duration, thumbnail, and available formats when provided by the
   source.
 - Choose from available video quality options.
-- Download audio using the supported audio formats.
-- Smart Download recommends a video quality using the available options and connection context.
-- View download progress, completion and error status.
+- Use **Best quality** to select the highest available video resolution or audio bitrate.
+- Download audio using supported audio formats.
+- View download progress, completion, and error status.
+- Pause and retry downloads when supported by the download state.
 
 ### Download History
 
 - Keep a local history of downloads.
-- Search downloaded items and filter between all items, videos and audio.
-- View media details such as file type, size and date.
+- Search downloaded items and filter between all items, videos, and audio.
+- View media details such as file type, size, and date.
 - Open a completed file in its folder or play it with a compatible app.
+- Detect duplicate downloads using media IDs, including legacy and numbered filenames.
+- Replace duplicate media with safeguards that preserve the existing file if replacement fails.
 - Clear finished and failed records.
 
 ### Personalization
 
-- System, light and dark themes.
+- System, Light, Dark, and Pure Black themes.
 - Optional Android 12+ Dynamic Color using Material You wallpaper colors.
 - Material 3 surfaces and responsive Compose layouts.
 
 ### Updates
 
 - Check for new versions published through GitHub Releases.
-- Download and verify the release manifest and APK digest before installation.
+- Download and validate the release manifest and APK digest before installation.
 - Show update availability and download progress through the app's update flow.
 
 ---
@@ -116,7 +118,7 @@ The interface focuses on:
 - Rounded surfaces and theme-aware colors.
 - Straightforward video and audio choices.
 - A compact, searchable download history.
-- Android-native navigation, permissions and update installation.
+- Android-native navigation, permissions, and update installation.
 
 ---
 
@@ -163,8 +165,8 @@ app/
     └── androidTest/
 ```
 
-- **UI:** Download, History and Settings screens are implemented with Jetpack Compose.
-- **Update flow:** GitHub Release lookup, manifest validation, APK digest verification and installer
+- **UI:** Download, History, and Settings screens are implemented with Jetpack Compose.
+- **Update flow:** GitHub Release lookup, manifest validation, APK digest verification, and installer
   handling live under `core/update/`.
 - **Local data:** Download state and history are managed in the app; downloaded media stays in
   app-specific/media storage.
@@ -189,7 +191,7 @@ The app currently resolves these artifacts from `mavenLocal()`, not Maven Centra
 - `io.github.darkstar085.youtubedl-kotlin:ffmpeg:1.0.0`
 - `io.github.darkstar085.youtubedl-kotlin:aria2c:1.0.0`
 
-Publish the corresponding `library`, `ffmpeg` and `aria2c` modules from the matching
+Publish the corresponding `library`, `ffmpeg`, and `aria2c` modules from the matching
 `youtubedl-kotlin` source project to your local Maven repository before building. A fresh clone does
 not include these Maven artifacts. CI builds need the same artifacts installed or made available
 from a remote Maven repository.
@@ -217,7 +219,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`.
 Downloads are stored in app-specific/media storage. No broad storage permission is requested by this
 app. Clearing app data or uninstalling removes app-specific files.
 
-Downly uses network access to retrieve media, check supported sources and query GitHub Releases for
+Downly uses network access to retrieve media, check supported sources, and query GitHub Releases for
 updates. Source-site behavior and available formats can change. Some media may require
 authentication or may be unavailable.
 

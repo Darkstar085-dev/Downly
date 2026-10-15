@@ -75,6 +75,9 @@
     <string name="best_download_quality">Best · %1$s</string>
     <string name="cancel_download">Cancel download</string>
     <string name="remove_from_history">Remove from history</string>
+    <string name="pause_download">Pause</string>
+    <string name="resume_download">Resume</string>
+    <string name="retry_download">Retry</string>
     <string name="media_mp3">MP3</string>
     <string name="updates_title">App updates</string>
     <string name="updates_check_title">Downly updates</string>

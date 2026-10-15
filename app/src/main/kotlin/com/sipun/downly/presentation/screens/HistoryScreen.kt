@@ -29,6 +29,8 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.VideoFile
@@ -255,12 +257,42 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
             if (record.status == DownloadStatus.QUEUED || record.status == DownloadStatus.DOWNLOADING) {
                 LinearProgressIndicator(progress = { record.progress }, modifier = Modifier.fillMaxWidth(), color = colorResource(R.color.downly_accent))
                 Text(record.progress.times(100).toInt().toString() + "% · " + record.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(
+                    onClick = { vm.pause(record) },
+                    modifier = Modifier.align(Alignment.End),
+                    shape = RoundedCornerShape(50)
+                ) {
+                    Icon(Icons.Rounded.Pause, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.pause_download))
+                }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(if (record.status == DownloadStatus.COMPLETE) Icons.Rounded.CheckCircle else Icons.Rounded.Download,
-                        contentDescription = null, tint = colorResource(R.color.downly_accent), modifier = Modifier.size(20.dp))
+                    Icon(
+                        when (record.status) {
+                            DownloadStatus.COMPLETE -> Icons.Rounded.CheckCircle
+                            DownloadStatus.FAILED -> Icons.Rounded.Refresh
+                            else -> Icons.Rounded.Download
+                        },
+                        contentDescription = null,
+                        tint = if (record.status == DownloadStatus.FAILED) MaterialTheme.colorScheme.error else colorResource(R.color.downly_accent),
+                        modifier = Modifier.size(20.dp)
+                    )
                     Text(record.detail, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                if (record.status == DownloadStatus.FAILED || record.status == DownloadStatus.PAUSED) {
+                    Button(
+                        onClick = { if (record.status == DownloadStatus.FAILED) vm.retry(record) else vm.resume(record) },
+                        modifier = Modifier.align(Alignment.End),
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(containerColor = colorResource(R.color.downly_accent))
+                    ) {
+                        Icon(if (record.status == DownloadStatus.FAILED) Icons.Rounded.Refresh else Icons.Rounded.PlayArrow,
+                            contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(if (record.status == DownloadStatus.FAILED) R.string.retry_download else R.string.resume_download))
+                    }
                 }
             }
             if (record.status == DownloadStatus.COMPLETE && record.filePath != null) {

@@ -3,7 +3,7 @@ package com.sipun.downly.data
 import java.util.UUID
 
 enum class MediaMode { VIDEO, AUDIO }
-enum class DownloadStatus { QUEUED, DOWNLOADING, COMPLETE, FAILED, CANCELLED }
+enum class DownloadStatus { QUEUED, DOWNLOADING, PAUSED, COMPLETE, FAILED, CANCELLED }
 
 data class DownloadRecord(
     val id: String = UUID.randomUUID().toString(),
@@ -13,7 +13,9 @@ data class DownloadRecord(
     val progress: Float = 0f,
     val detail: String = "Queued",
     val filePath: String? = null,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val mode: MediaMode = MediaMode.VIDEO,
+    val quality: String = "Best"
 )
 
 data class QualityOption(val quality: String, val height: Int, val estimatedBytes: Long?, val formatSelector: String = "")

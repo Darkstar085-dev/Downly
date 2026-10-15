@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class DownlyViewModel : ViewModel() {
     private val worker = Executors.newSingleThreadExecutor()
     private val cancelledIds = ConcurrentHashMap.newKeySet<String>()
+    private val pausedIds = ConcurrentHashMap.newKeySet<String>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val persistenceWorker = Executors.newSingleThreadExecutor()
     private val _state = MutableStateFlow(ScreenState())
@@ -264,13 +265,15 @@ class DownlyViewModel : ViewModel() {
             mutate { copy(message = "This link is already active.") }
             return
         }
+        val selectedQuality = qualityOverride ?: if (current.mode == MediaMode.VIDEO && current.quality == "Smart") current.recommendedQuality else current.quality
         val record = DownloadRecord(
             url = url,
             title = current.preview?.title ?: Uri.parse(url).host.orEmpty(),
-            status = DownloadStatus.QUEUED
+            status = DownloadStatus.QUEUED,
+            mode = current.mode,
+            quality = selectedQuality
         )
         mutate { copy(history = listOf(record) + history, tab = 1, message = "Added to download activity") }
-        val selectedQuality = qualityOverride ?: if (current.mode == MediaMode.VIDEO && current.quality == "Smart") current.recommendedQuality else current.quality
         worker.execute {
             if (cancelledIds.remove(record.id)) return@execute
             executeDownload(record, current.mode, selectedQuality, current.connectionType)
@@ -288,6 +291,7 @@ class DownlyViewModel : ViewModel() {
             val request = YoutubeDLRequest(record.url)
                 .addOption("-o", File(folder, "%(title).140B - %(id)s.%(ext)s").absolutePath)
                 .addOption("--newline")
+                .addOption("--continue")
                 .addOption("--no-playlist")
             if (mode == MediaMode.AUDIO) {
                 val audioFormatId = quality.takeIf { it.startsWith("audio:") }?.removePrefix("audio:")
@@ -348,8 +352,15 @@ class DownlyViewModel : ViewModel() {
                     filePath = publicPath)
             }
         } catch (error: Exception) {
-            val status = if (error is YoutubeDL.CanceledException) DownloadStatus.CANCELLED else DownloadStatus.FAILED
-            setRecord(record.id) { copy(status = status, detail = friendlyError(error)) }
+            val latest = _state.value.history.firstOrNull { it.id == record.id }
+            val status = when {
+                pausedIds.remove(record.id) || latest?.status == DownloadStatus.PAUSED -> DownloadStatus.PAUSED
+                error is YoutubeDL.CanceledException -> DownloadStatus.CANCELLED
+                else -> DownloadStatus.FAILED
+            }
+            setRecord(record.id) {
+                copy(status = status, detail = if (status == DownloadStatus.PAUSED) "Paused · tap Resume to continue" else friendlyError(error))
+            }
         } finally {
             appContext?.let { persistHistory(it) }
         }
@@ -542,6 +553,47 @@ class DownlyViewModel : ViewModel() {
         }
     }
 
+    fun pause(record: DownloadRecord) {
+        val current = _state.value.history.firstOrNull { it.id == record.id } ?: return
+        if (current.status == DownloadStatus.QUEUED) {
+            cancelledIds.add(record.id)
+            pausedIds.add(record.id)
+            setRecord(record.id) { copy(status = DownloadStatus.PAUSED, detail = "Paused · tap Resume to continue") }
+            return
+        }
+        if (current.status == DownloadStatus.DOWNLOADING) {
+            pausedIds.add(record.id)
+            setRecord(record.id) { copy(status = DownloadStatus.PAUSED, detail = "Pausing…") }
+            if (!YoutubeDL.destroyProcessById(record.id)) {
+                pausedIds.remove(record.id)
+                setRecord(record.id) { copy(status = DownloadStatus.DOWNLOADING, detail = "Downloading…") }
+            }
+        }
+    }
+
+    fun resume(record: DownloadRecord) {
+        val current = _state.value.history.firstOrNull { it.id == record.id } ?: return
+        if (current.status != DownloadStatus.PAUSED) return
+        pausedIds.remove(record.id)
+        val mode = current.mode
+        val quality = current.quality
+        setRecord(record.id) { copy(status = DownloadStatus.QUEUED, detail = "Resuming download…") }
+        worker.execute {
+            if (cancelledIds.remove(record.id)) return@execute
+            executeDownload(current.copy(status = DownloadStatus.QUEUED), mode, quality, _state.value.connectionType)
+        }
+    }
+
+    fun retry(record: DownloadRecord) {
+        val current = _state.value.history.firstOrNull { it.id == record.id } ?: return
+        if (current.status != DownloadStatus.FAILED) return
+        setRecord(record.id) { copy(status = DownloadStatus.QUEUED, progress = 0f, detail = "Retrying download…") }
+        worker.execute {
+            if (cancelledIds.remove(record.id)) return@execute
+            executeDownload(current.copy(status = DownloadStatus.QUEUED), current.mode, current.quality, _state.value.connectionType)
+        }
+    }
+
     fun cancel(record: DownloadRecord) {
         val current = _state.value.history.firstOrNull { it.id == record.id } ?: return
         if (current.status == DownloadStatus.QUEUED) {
@@ -580,7 +632,9 @@ class DownlyViewModel : ViewModel() {
                     id = p[0], url = decodeText(p[1]), title = decodeText(p[2]), status = status,
                     progress = p[4].toFloatOrNull() ?: 0f, detail = decodeText(p[5]),
                     filePath = p[6].takeIf { it != "-" }?.let(::decodeText),
-                    timestamp = p[7].toLongOrNull() ?: System.currentTimeMillis()
+                    timestamp = p[7].toLongOrNull() ?: System.currentTimeMillis(),
+                    mode = p.getOrNull(8)?.let { runCatching { MediaMode.valueOf(it) }.getOrNull() } ?: MediaMode.VIDEO,
+                    quality = p.getOrNull(9)?.let(::decodeText) ?: "Best"
                 )
             }.getOrNull()
         }.toList()
@@ -591,7 +645,7 @@ class DownlyViewModel : ViewModel() {
         val encoded = snapshot.joinToString("\n") { item ->
             listOf(item.id, encodeText(item.url), encodeText(item.title), item.status.name,
                 item.progress.toString(), encodeText(item.detail), item.filePath?.let(::encodeText) ?: "-",
-                item.timestamp.toString()).joinToString("|")
+                item.timestamp.toString(), item.mode.name, encodeText(item.quality)).joinToString("|")
         }
         persistenceWorker.execute {
             context.getSharedPreferences("downly-history", Context.MODE_PRIVATE).edit()

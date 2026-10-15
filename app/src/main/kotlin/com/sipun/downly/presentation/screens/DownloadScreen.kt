@@ -331,13 +331,13 @@ fun DownloadScreen(
                                     Icon(Icons.Rounded.AutoAwesome, null, tint = colorResource(R.color.downly_accent))
                                     Spacer(Modifier.width(8.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(stringResource(R.string.smart_download), fontWeight = FontWeight.Bold)
-                                        val recommendedAudio = recommendAudioOption(preview.audioOptions, state.connectionType)
+                                        Text(stringResource(R.string.best_download), fontWeight = FontWeight.Bold)
+                                        val recommendedAudio = recommendAudioOption(preview.audioOptions)
                                         Text(
                                             if (state.mode == MediaMode.AUDIO) {
-                                                recommendedAudio?.let { state.connectionType + " · " + it.quality + " recommended" }
-                                                    ?: stringResource(R.string.best_compatible_audio_option)
-                                            } else state.connectionType + " · " + state.recommendedQuality + " recommended",
+                                                recommendedAudio?.let { "Highest available · " + it.quality }
+                                                    ?: stringResource(R.string.best_audio_quality)
+                                            } else "Highest available · " + state.recommendedQuality,
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -347,23 +347,23 @@ fun DownloadScreen(
                                 if (state.mode == MediaMode.VIDEO) {
                                     val estimate = preview.qualityOptions.firstOrNull { it.quality == state.recommendedQuality }?.estimatedBytes
                                     Text(
-                                        "Suggested " + state.recommendedQuality +
+                                        "Best available " + state.recommendedQuality +
                                             (estimate?.let { " · about " + formatBytes(it) } ?: " · size depends on source"),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 } else {
-                                    val recommendedAudio = recommendAudioOption(preview.audioOptions, state.connectionType)
+                                    val recommendedAudio = recommendAudioOption(preview.audioOptions)
                                     Text(
                                         recommendedAudio?.let {
-                                            "Suggested " + it.quality + (it.estimatedBytes?.let { bytes -> " · about " + formatBytes(bytes) } ?: " · size depends on source")
-                                        } ?: stringResource(R.string.smart_audio_explanation),
+                                            "Best available " + it.quality + (it.estimatedBytes?.let { bytes -> " · about " + formatBytes(bytes) } ?: " · size depends on source")
+                                        } ?: stringResource(R.string.best_audio_explanation),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
-                                Button(onClick = vm::startSmartDownload, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) {
-                                    Text(if (state.mode == MediaMode.AUDIO) stringResource(R.string.smart_audio_download) else stringResource(R.string.smart_download_quality, state.recommendedQuality), fontWeight = FontWeight.Bold)
+                                Button(onClick = vm::startBestDownload, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) {
+                                    Text(if (state.mode == MediaMode.AUDIO) stringResource(R.string.best_audio_download) else stringResource(R.string.best_download_quality, state.recommendedQuality), fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -404,11 +404,18 @@ fun DownloadScreen(
                                     Spacer(Modifier.weight(1f))
                                     Text(pluralStringResource(R.plurals.options_count, preview.audioOptions.size, preview.audioOptions.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
+                                val bestAudioFormatId = recommendAudioOption(preview.audioOptions)?.formatId
                                 preview.audioOptions.forEach { option ->
+                                    val isBestAudio = option.formatId == bestAudioFormatId
                                     Card(
                                         shape = MaterialTheme.shapes.medium,
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (isBestAudio) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
+                                        ),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp,
+                                            if (isBestAudio) colorResource(R.color.downly_accent) else MaterialTheme.colorScheme.outlineVariant
+                                        )
                                     ) {
                                         Row(
                                             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -423,7 +430,7 @@ fun DownloadScreen(
                                             }
                                             Spacer(Modifier.width(12.dp))
                                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                                Text(option.quality, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                                Text(option.quality + if (isBestAudio) " · " + stringResource(R.string.recommended) else "", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = if (isBestAudio) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface)
                                                 Text(
                                                     option.estimatedBytes?.let { stringResource(R.string.file_size_about, formatBytes(it)) } ?: stringResource(R.string.file_size_varies),
                                                     style = MaterialTheme.typography.bodySmall,

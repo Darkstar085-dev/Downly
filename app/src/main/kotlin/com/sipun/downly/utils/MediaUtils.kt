@@ -38,16 +38,9 @@ fun buildAudioOptions(formats: List<VideoFormat>): List<AudioOption> {
         .distinctBy { "${it.bitrate}:${it.quality.substringAfter(" · ")}" }
 }
 
-fun recommendAudioOption(options: List<AudioOption>, connectionType: String): AudioOption? {
+fun recommendAudioOption(options: List<AudioOption>): AudioOption? {
     if (options.isEmpty()) return null
-    if (connectionType == "Wi-Fi" || connectionType == "Ethernet") {
-        return options.maxWithOrNull(compareBy<AudioOption> { it.bitrate }.thenBy { it.estimatedBytes ?: 0L })
-            ?: options.first()
-    }
-    val targetBitrate = if (connectionType == "Mobile data") 128 else 96
-    return options.filter { it.bitrate in 1..targetBitrate }
-        .maxWithOrNull(compareBy<AudioOption> { it.bitrate }.thenBy { it.estimatedBytes ?: 0L })
-        ?: options.minByOrNull { it.bitrate }
+    return options.maxWithOrNull(compareBy<AudioOption> { it.bitrate }.thenBy { it.estimatedBytes ?: 0L })
 }
 
 fun defaultQualityFor(connectionType: String): String = when (connectionType) {
@@ -58,14 +51,7 @@ fun defaultQualityFor(connectionType: String): String = when (connectionType) {
 
 fun recommendQuality(options: List<QualityOption>, connectionType: String): String {
     if (options.isEmpty()) return defaultQualityFor(connectionType)
-    val target = when (connectionType) {
-        "Wi-Fi", "Ethernet" -> 1080
-        "Mobile data" -> 480
-        else -> 360
-    }
-    return options.filter { it.height <= target }.maxByOrNull { it.height }?.quality
-        ?: options.minByOrNull { it.height }?.quality
-        ?: defaultQualityFor(connectionType)
+    return options.maxByOrNull { it.height }?.quality ?: defaultQualityFor(connectionType)
 }
 
 fun formatBytes(bytes: Long): String = when {

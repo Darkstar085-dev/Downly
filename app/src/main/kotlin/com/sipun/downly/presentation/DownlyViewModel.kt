@@ -232,7 +232,7 @@ class DownlyViewModel : ViewModel() {
         }
     }
 
-    fun startSmartDownload() {
+    fun startBestDownload() {
         val current = _state.value
         val selectedQuality = when (current.mode) {
             MediaMode.VIDEO -> current.preview?.qualityOptions
@@ -240,7 +240,7 @@ class DownlyViewModel : ViewModel() {
                 ?.let { recommendQuality(it, current.connectionType) }
                 ?: current.recommendedQuality
             MediaMode.AUDIO -> current.preview?.audioOptions
-                ?.let { recommendAudioOption(it, current.connectionType) }
+                ?.let { recommendAudioOption(it) }
                 ?.let { "audio:${it.formatId}" }
         }
         startDownload(selectedQuality)

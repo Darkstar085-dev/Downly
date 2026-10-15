@@ -38,12 +38,12 @@
     <string name="clipboard_empty">Clipboard is empty</string>
     <string name="clear_url">Clear URL</string>
     <string name="media_thumbnail">Media thumbnail</string>
-    <string name="smart_download">Smart Download</string>
-    <string name="best_compatible_audio_option">Best compatible audio option</string>
-    <string name="smart_audio_explanation">The best compatible audio option will be used</string>
+    <string name="best_download">Best</string>
+    <string name="best_audio_quality">Highest available audio quality</string>
+    <string name="best_audio_explanation">The highest available audio quality will be used</string>
     <string name="available_video_qualities">Available video qualities</string>
     <string name="available_audio_options">Available audio options</string>
-    <string name="recommended">Recommended</string>
+    <string name="recommended">Best</string>
     <string name="file_size_about">About %1$s</string>
     <string name="file_size_varies">File size varies by source</string>
     <string name="download_action">Download</string>
@@ -71,8 +71,8 @@
     <string name="url_placeholder">https://…</string>
     <string name="preparing_downloader">Preparing downloader…</string>
     <string name="setting_up_downly">Setting up Downly</string>
-    <string name="smart_audio_download">Smart Audio Download</string>
-    <string name="smart_download_quality">Smart Download · %1$s</string>
+    <string name="best_audio_download">Best Audio Download</string>
+    <string name="best_download_quality">Best · %1$s</string>
     <string name="cancel_download">Cancel download</string>
     <string name="remove_from_history">Remove from history</string>
     <string name="media_mp3">MP3</string>

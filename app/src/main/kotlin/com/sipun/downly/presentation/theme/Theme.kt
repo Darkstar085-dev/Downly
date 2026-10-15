@@ -10,6 +10,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.unit.dp
@@ -19,10 +20,36 @@ import com.sipun.downly.R
 fun DownlyTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
+    pureBlack: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    val colors = if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    val colors = if (pureBlack) {
+        val base = if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            dynamicDarkColorScheme(context)
+        } else {
+            darkColorScheme(
+                primary = colorResource(R.color.downly_dark_primary),
+                onPrimary = colorResource(R.color.downly_dark_on_primary),
+                primaryContainer = colorResource(R.color.downly_dark_primary_container),
+                onPrimaryContainer = colorResource(R.color.downly_dark_on_primary_container),
+                secondary = colorResource(R.color.downly_dark_secondary),
+                onSecondary = colorResource(R.color.downly_dark_on_secondary),
+                onSurface = colorResource(R.color.downly_dark_on_surface),
+                onSurfaceVariant = colorResource(R.color.downly_dark_on_surface_variant),
+                onSecondaryContainer = colorResource(R.color.downly_dark_on_secondary_container),
+                outline = colorResource(R.color.downly_dark_outline)
+            )
+        }
+        base.copy(
+            background = Color.Black,
+            surface = Color.Black,
+            surfaceContainerLow = Color.Black,
+            surfaceContainer = Color.Black,
+            secondaryContainer = Color(0xFF101010),
+            outlineVariant = Color(0xFF303030)
+        )
+    } else if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     } else if (darkTheme) {
         darkColorScheme(

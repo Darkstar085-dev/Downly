@@ -172,7 +172,7 @@ fun DownlyApp(
 
     val darkTheme = when (state.themeMode) {
         "Light" -> false
-        "Dark" -> true
+        "Dark", "Pure Black" -> true
         else -> isSystemInDarkTheme()
     }
 
@@ -184,7 +184,11 @@ fun DownlyApp(
         }
     }
 
-    DownlyTheme(darkTheme = darkTheme, dynamicColor = state.dynamicColor) {
+    DownlyTheme(
+        darkTheme = darkTheme,
+        dynamicColor = state.dynamicColor,
+        pureBlack = state.themeMode == "Pure Black"
+    ) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {

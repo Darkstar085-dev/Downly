@@ -18,7 +18,7 @@
     <string name="about_by_sipun">by Sipun</string>
     <string name="appearance_description">Personalize how Downly looks on your device.</string>
     <string name="theme_title">Theme</string>
-    <string name="theme_description">System, light, or dark mode</string>
+    <string name="theme_description">System, light, dark, or pure black mode</string>
     <string name="dynamic_color_title">Dynamic color</string>
     <string name="dynamic_color_description">Material You wallpaper colors</string>
     <string name="dynamic_color_unavailable">Available on Android 12 and later</string>
@@ -31,6 +31,8 @@
     <string name="theme_light_description">Bright and clear</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_dark_description">Easy on the eyes</string>
+    <string name="theme_pure_black">Pure black</string>
+    <string name="theme_pure_black_description">True black surfaces for dark mode</string>
     <string name="action_done">Done</string>
     <string name="theme_selected">Selected</string>
     <string name="download_paste_link">Paste a link</string>

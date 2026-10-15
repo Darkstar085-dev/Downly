@@ -7,6 +7,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import android.widget.ImageView
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -71,12 +72,13 @@ fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, 
     val context = LocalContext.current
     val selectedThemeIcon = when (state.themeMode) {
         "Light" -> Icons.Rounded.LightMode
-        "Dark" -> Icons.Rounded.DarkMode
+        "Dark", "Pure Black" -> Icons.Rounded.DarkMode
         else -> Icons.Rounded.BrightnessAuto
     }
     val selectedThemeName = when (state.themeMode) {
-        "Light" -> "Light"
-        "Dark" -> "Dark"
+        "Light" -> stringResource(R.string.theme_light)
+        "Dark" -> stringResource(R.string.theme_dark)
+        "Pure Black" -> stringResource(R.string.theme_pure_black)
         else -> stringResource(R.string.theme_system_default)
     }
 
@@ -384,8 +386,17 @@ fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, 
     if (showThemePreferences) {
         AlertDialog(
             onDismissRequest = { showThemePreferences = false },
+            modifier = Modifier.border(
+                BorderStroke(
+                    1.dp,
+                    if (MaterialTheme.colorScheme.background == Color.Black) Color(0xFF484848)
+                    else MaterialTheme.colorScheme.outlineVariant
+                ),
+                RoundedCornerShape(28.dp)
+            ),
             shape = RoundedCornerShape(28.dp),
             containerColor = MaterialTheme.colorScheme.surface,
+            confirmButton = {},
             title = {
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(
@@ -432,11 +443,16 @@ fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, 
                             showThemePreferences = false
                         }
                     )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showThemePreferences = false }) {
-                    Text(stringResource(R.string.action_done))
+                    ThemeOption(
+                        title = stringResource(R.string.theme_pure_black),
+                        description = stringResource(R.string.theme_pure_black_description),
+                        icon = { Icon(Icons.Rounded.DarkMode, contentDescription = null) },
+                        selected = state.themeMode == "Pure Black",
+                        onClick = {
+                            vm.setThemeMode("Pure Black")
+                            showThemePreferences = false
+                        }
+                    )
                 }
             }
         )
@@ -457,7 +473,9 @@ private fun ThemeOption(
         shape = RoundedCornerShape(18.dp),
         border = BorderStroke(
             width = if (selected) 1.5.dp else 1.dp,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+            color = if (selected) MaterialTheme.colorScheme.primary
+            else if (MaterialTheme.colorScheme.background == Color.Black) Color(0xFF484848)
+            else MaterialTheme.colorScheme.outlineVariant
         ),
         colors = CardDefaults.cardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer

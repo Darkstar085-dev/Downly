@@ -123,7 +123,10 @@ class DownlyViewModel : ViewModel() {
     fun setThemeMode(value: String) {
         mutate { copy(themeMode = value) }
         appContext?.getSharedPreferences("downly-settings", Context.MODE_PRIVATE)
-            ?.edit()?.putString("theme_mode", value)?.apply()
+            ?.edit()
+            ?.putString("theme_mode", value)
+            ?.putBoolean("dynamic_color", _state.value.dynamicColor)
+            ?.apply()
     }
 
     fun setDynamicColor(value: Boolean) {

@@ -84,8 +84,12 @@ fun DownloadScreen(
 ) {
     val context = LocalContext.current
     var compactReadyStatus by remember { mutableStateOf(false) }
+    var linkInputExpanded by remember { mutableStateOf(true) }
+    LaunchedEffect(state.preview) {
+        linkInputExpanded = state.preview == null
+    }
     LaunchedEffect(state.message) {
-        compactReadyStatus = false
+        compactReadyStatus = state.message.equals("Media details ready", ignoreCase = true)
         if (state.message.equals("Downloader ready", ignoreCase = true)) {
             delay(4_500)
             compactReadyStatus = true
@@ -98,7 +102,28 @@ fun DownloadScreen(
     ) {
         item {
             Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                    if (state.preview != null && !linkInputExpanded) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().clickable { linkInputExpanded = true },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(Icons.Rounded.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(stringResource(R.string.download_link_fetched), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                    Text(stringResource(R.string.download_change_link_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text(stringResource(R.string.download_change_link), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    } else {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             Modifier.size(44.dp).clip(RoundedCornerShape(14.dp))
@@ -160,12 +185,13 @@ fun DownloadScreen(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
+                    }
                     if (state.message.isNotBlank()) {
                         val isError = listOf("failed", "invalid", "error", "missing", "unable", "not found")
                             .any { state.message.contains(it, ignoreCase = true) }
                         val isInitializing = state.message.contains("Libraries", ignoreCase = true) ||
                             state.message.contains("Preparing Libraries", ignoreCase = true)
-                        val isReady = state.message.equals("Downloader ready", ignoreCase = true)
+                        val isReady = state.message.equals("Downloader ready", ignoreCase = true) || state.message.equals("Media details ready", ignoreCase = true)
                         val isInfo = isInitializing || isReady
                         if (isReady && compactReadyStatus) {
                             Row(
@@ -180,7 +206,7 @@ fun DownloadScreen(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
-                                    "Downloader ready",
+                                    if (state.message.equals("Media details ready", ignoreCase = true)) "Media details ready" else "Downloader ready",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Medium
@@ -301,7 +327,7 @@ fun DownloadScreen(
         item {
             state.preview?.let { preview ->
                 Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(width = 112.dp, height = 76.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
                                 contentAlignment = Alignment.Center) {
@@ -347,23 +373,24 @@ fun DownloadScreen(
                                 if (state.mode == MediaMode.VIDEO) {
                                     val recommendedVideo = preview.qualityOptions.firstOrNull { it.quality == state.recommendedQuality }
                                     Text(
-                                        "Best available " + state.recommendedQuality +
-                                            (recommendedVideo?.estimatedBytes?.let { bytes -> " · " + (if (recommendedVideo.sizeIsApproximate) "about " else "") + formatBytes(bytes) } ?: " · size depends on source"),
+                                        recommendedVideo?.estimatedBytes?.let { bytes ->
+                                            (if (recommendedVideo.sizeIsApproximate) "About " else "") + formatBytes(bytes)
+                                        } ?: stringResource(R.string.file_size_varies),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 } else {
                                     val recommendedAudio = recommendAudioOption(preview.audioOptions)
                                     Text(
-                                        recommendedAudio?.let { option ->
-                                            "Best available " + option.quality + (option.estimatedBytes?.let { bytes -> " · " + (if (option.sizeIsApproximate) "about " else "") + formatBytes(bytes) } ?: " · size depends on source")
-                                        } ?: stringResource(R.string.best_audio_explanation),
+                                        recommendedAudio?.estimatedBytes?.let { bytes ->
+                                            (if (recommendedAudio.sizeIsApproximate) "About " else "") + formatBytes(bytes)
+                                        } ?: stringResource(R.string.file_size_varies),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
                                 Button(onClick = vm::startBestDownload, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) {
-                                    Text(if (state.mode == MediaMode.AUDIO) stringResource(R.string.best_audio_download) else stringResource(R.string.best_download_quality, state.recommendedQuality), fontWeight = FontWeight.Bold)
+                                    Text(if (state.mode == MediaMode.AUDIO) stringResource(R.string.best_audio_download) else stringResource(R.string.download_best_quality, state.recommendedQuality), fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -380,7 +407,10 @@ fun DownloadScreen(
                                         colors = CardDefaults.cardColors(
                                             containerColor = if (option.quality == state.recommendedQuality) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
                                         ),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp,
+                                            if (option.quality == state.recommendedQuality) colorResource(R.color.downly_accent) else MaterialTheme.colorScheme.outlineVariant
+                                        )
                                     ) {
                                         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Column(Modifier.weight(1f)) {

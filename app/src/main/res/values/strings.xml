@@ -35,6 +35,9 @@
     <string name="theme_selected">Selected</string>
     <string name="download_paste_link">Paste a link</string>
     <string name="download_supported_sites">YouTube, Shorts and supported sites</string>
+    <string name="download_link_fetched">Link fetched successfully</string>
+    <string name="download_change_link_hint">Tap to change or enter a new link</string>
+    <string name="download_change_link">Change</string>
     <string name="clipboard_empty">Clipboard is empty</string>
     <string name="clear_url">Clear URL</string>
     <string name="media_thumbnail">Media thumbnail</string>
@@ -73,6 +76,7 @@
     <string name="setting_up_downly">Setting up Downly</string>
     <string name="best_audio_download">Best Audio Download</string>
     <string name="best_download_quality">Best · %1$s</string>
+    <string name="download_best_quality">Download best · %1$s</string>
     <string name="cancel_download">Cancel download</string>
     <string name="remove_from_history">Remove from history</string>
     <string name="pause_download">Pause</string>

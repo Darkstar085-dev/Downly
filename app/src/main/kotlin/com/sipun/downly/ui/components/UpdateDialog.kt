@@ -31,6 +31,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.foundation.Image
 import androidx.compose.ui.Modifier
+import com.sipun.downly.presentation.theme.DownlyUiShapes
+import com.sipun.downly.presentation.theme.downlyCardBorder
+import com.sipun.downly.presentation.theme.downlyDialogBorder
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +53,7 @@ fun UpdateDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.downlyDialogBorder(),
         title = {
             Text(
                 stringResource(if (isDownloaded) R.string.update_ready else R.string.update_title),
@@ -66,7 +70,8 @@ fun UpdateDialog(
                 )
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
+                    shape = DownlyUiShapes.nestedCard,
+                    border = downlyCardBorder(),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
                     ),
@@ -123,7 +128,7 @@ fun UpdateDialog(
                     modifier = Modifier
                         .weight(0.85f)
                         .height(44.dp),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = DownlyUiShapes.nestedCard,
                 ) {
                     Text(stringResource(R.string.update_later))
                 }
@@ -133,7 +138,7 @@ fun UpdateDialog(
                     modifier = Modifier
                         .weight(1.25f)
                         .height(44.dp),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = DownlyUiShapes.nestedCard,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -152,9 +157,9 @@ fun UpdateDialog(
                 }
             }
         },
-        shape = RoundedCornerShape(28.dp),
+        shape = DownlyUiShapes.dialog,
         containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 6.dp,
+        tonalElevation = 0.dp,
     )
 }
 
@@ -167,6 +172,7 @@ fun DownloadProgressDialog(
 ) {
     AlertDialog(
         onDismissRequest = {},
+        modifier = Modifier.downlyDialogBorder(),
         icon = {
             Image(
                 bitmap = appIcon,
@@ -222,14 +228,14 @@ fun DownloadProgressDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(44.dp),
-                shape = RoundedCornerShape(14.dp),
+                shape = DownlyUiShapes.nestedCard,
             ) {
                 Text(stringResource(R.string.action_cancel))
             }
         },
-        shape = RoundedCornerShape(28.dp),
+        shape = DownlyUiShapes.dialog,
         containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 6.dp,
+        tonalElevation = 0.dp,
     )
 }
 

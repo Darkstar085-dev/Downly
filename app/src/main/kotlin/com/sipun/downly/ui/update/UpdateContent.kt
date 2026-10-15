@@ -32,6 +32,8 @@ import com.sipun.downly.core.update.UpdateInstaller
 import com.sipun.downly.core.update.UpdateManager
 import com.sipun.downly.ui.components.DownloadProgressDialog
 import com.sipun.downly.ui.components.UpdateDialog
+import com.sipun.downly.presentation.theme.DownlyUiShapes
+import com.sipun.downly.presentation.theme.downlyDialogBorder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -232,6 +234,10 @@ fun UpdateContent(
 
     if (checkingForUpdate) {
         AlertDialog(
+            modifier = Modifier.downlyDialogBorder(),
+            shape = DownlyUiShapes.dialog,
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
             onDismissRequest = {},
             title = { Text(stringResource(R.string.update_checking)) },
             text = {
@@ -253,6 +259,10 @@ fun UpdateContent(
 
     if (updateCheckFailed) {
         AlertDialog(
+            modifier = Modifier.downlyDialogBorder(),
+            shape = DownlyUiShapes.dialog,
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
             onDismissRequest = {
                 updateCheckFailed = false
                 updateCheckError = null
@@ -281,6 +291,10 @@ fun UpdateContent(
 
     if (showNoUpdate) {
         AlertDialog(
+            modifier = Modifier.downlyDialogBorder(),
+            shape = DownlyUiShapes.dialog,
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
             onDismissRequest = { showNoUpdate = false },
             title = { Text(stringResource(R.string.update_up_to_date)) },
             text = {

@@ -7,7 +7,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import android.widget.ImageView
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.border
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -24,7 +23,6 @@ import com.airbnb.lottie.compose.rememberLottieDynamicProperty
 import com.airbnb.lottie.LottieProperty
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,6 +62,9 @@ import com.sipun.downly.R
 import androidx.compose.ui.unit.dp
 import com.sipun.downly.data.ScreenState
 import com.sipun.downly.presentation.DownlyViewModel
+import com.sipun.downly.presentation.theme.DownlyUiShapes
+import com.sipun.downly.presentation.theme.downlyCardBorder
+import com.sipun.downly.presentation.theme.downlyDialogBorder
 
 @Composable
 fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, onCheckForUpdates: () -> Unit = {}) {
@@ -99,10 +100,10 @@ fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, 
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
+                shape = DownlyUiShapes.card,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                border = downlyCardBorder()
             ) {
                 Column {
                     Row(
@@ -214,10 +215,10 @@ fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, 
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
+                shape = DownlyUiShapes.card,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                border = downlyCardBorder()
             ) {
                 Column {
                     Row(
@@ -302,7 +303,7 @@ fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, 
 
     if (showAboutDialog) {
         Dialog(onDismissRequest = { showAboutDialog = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Surface(modifier = Modifier.fillMaxWidth(0.82f), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp, shadowElevation = 18.dp) {
+            Surface(modifier = Modifier.fillMaxWidth(0.82f), shape = DownlyUiShapes.dialog, color = MaterialTheme.colorScheme.surface, border = downlyCardBorder(), tonalElevation = 0.dp, shadowElevation = 18.dp) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     AndroidView(
                         factory = { viewContext -> ImageView(viewContext).apply { setImageDrawable(viewContext.packageManager.getApplicationIcon(viewContext.packageName)) } },
@@ -352,7 +353,7 @@ fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, 
                         },
                         shape = RoundedCornerShape(50),
                         color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        border = downlyCardBorder()
                     ) {
                         Text(stringResource(R.string.about_version, BuildConfig.VERSION_NAME), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -386,15 +387,8 @@ fun SettingsScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier, 
     if (showThemePreferences) {
         AlertDialog(
             onDismissRequest = { showThemePreferences = false },
-            modifier = Modifier.border(
-                BorderStroke(
-                    1.dp,
-                    if (MaterialTheme.colorScheme.background == Color.Black) Color(0xFF484848)
-                    else MaterialTheme.colorScheme.outlineVariant
-                ),
-                RoundedCornerShape(28.dp)
-            ),
-            shape = RoundedCornerShape(28.dp),
+            modifier = Modifier.downlyDialogBorder(),
+            shape = DownlyUiShapes.dialog,
             containerColor = MaterialTheme.colorScheme.surface,
             confirmButton = {},
             title = {
@@ -470,13 +464,8 @@ private fun ThemeOption(
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(
-            width = if (selected) 1.5.dp else 1.dp,
-            color = if (selected) MaterialTheme.colorScheme.primary
-            else if (MaterialTheme.colorScheme.background == Color.Black) Color(0xFF484848)
-            else MaterialTheme.colorScheme.outlineVariant
-        ),
+        shape = DownlyUiShapes.card,
+        border = downlyCardBorder(selected),
         colors = CardDefaults.cardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer
             else MaterialTheme.colorScheme.surface

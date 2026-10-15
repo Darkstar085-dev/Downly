@@ -73,6 +73,8 @@ import kotlinx.coroutines.delay
 import com.sipun.downly.data.MediaMode
 import com.sipun.downly.data.ScreenState
 import com.sipun.downly.presentation.DownlyViewModel
+import com.sipun.downly.presentation.theme.DownlyUiShapes
+import com.sipun.downly.presentation.theme.downlyCardBorder
 import com.sipun.downly.utils.formatBytes
 import com.sipun.downly.utils.recommendAudioOption
 
@@ -101,12 +103,12 @@ fun DownloadScreen(
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         item {
-            Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+            Card(shape = DownlyUiShapes.card, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                     if (state.preview != null && !linkInputExpanded) {
                         Card(
                             modifier = Modifier.fillMaxWidth().clickable { linkInputExpanded = true },
-                            shape = RoundedCornerShape(16.dp),
+                            shape = DownlyUiShapes.card,
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)),
                             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
                         ) {
@@ -145,7 +147,7 @@ fun DownloadScreen(
                     }
                     OutlinedTextField(
                         value = state.url, onValueChange = vm::setUrl, modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text(stringResource(R.string.url_placeholder)) }, minLines = 2, shape = MaterialTheme.shapes.medium,
+                        placeholder = { Text(stringResource(R.string.url_placeholder)) }, minLines = 2, shape = DownlyUiShapes.card,
                         trailingIcon = {
                             if (state.url.isNotBlank()) {
                                 IconButton(onClick = { vm.setUrl("") }) {
@@ -165,7 +167,7 @@ fun DownloadScreen(
                     if (state.preview == null) MediaModeSelector(state, vm)
                     Button(
                         onClick = vm::fetchInfo, modifier = Modifier.fillMaxWidth().height(48.dp),
-                        enabled = !state.busy && state.url.isNotBlank(), shape = MaterialTheme.shapes.medium,
+                        enabled = !state.busy && state.url.isNotBlank(), shape = DownlyUiShapes.card,
                         colors = ButtonDefaults.buttonColors(
                             disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
@@ -215,7 +217,7 @@ fun DownloadScreen(
                         } else {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = DownlyUiShapes.card,
                             colors = CardDefaults.cardColors(
                                 containerColor = when {
                                     isError -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f)
@@ -326,7 +328,7 @@ fun DownloadScreen(
         }
         item {
             state.preview?.let { preview ->
-                Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                Card(shape = DownlyUiShapes.card, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(width = 112.dp, height = 76.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
@@ -351,7 +353,7 @@ fun DownloadScreen(
                             }
                         }
                         MediaModeSelector(state, vm)
-                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), shape = RoundedCornerShape(16.dp)) {
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), shape = DownlyUiShapes.card, border = downlyCardBorder()) {
                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Rounded.AutoAwesome, null, tint = colorResource(R.color.downly_accent))
@@ -403,7 +405,7 @@ fun DownloadScreen(
                                 }
                                 preview.qualityOptions.forEach { option ->
                                     Card(
-                                        shape = RoundedCornerShape(14.dp),
+                                        shape = DownlyUiShapes.card,
                                         colors = CardDefaults.cardColors(
                                             containerColor = if (option.quality == state.recommendedQuality) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
                                         ),
@@ -419,7 +421,7 @@ fun DownloadScreen(
                                             }
                                             OutlinedButton(
                                                 onClick = { vm.startDownload("video:" + option.formatSelector) },
-                                                shape = RoundedCornerShape(14.dp),
+                                                shape = DownlyUiShapes.card,
                                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
                                             ) { Text(stringResource(R.string.download_action)) }
                                         }
@@ -438,7 +440,7 @@ fun DownloadScreen(
                                 preview.audioOptions.forEach { option ->
                                     val isBestAudio = option.formatId == bestAudioFormatId
                                     Card(
-                                        shape = MaterialTheme.shapes.medium,
+                                        shape = DownlyUiShapes.card,
                                         colors = CardDefaults.cardColors(
                                             containerColor = if (isBestAudio) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
                                         ),
@@ -470,7 +472,7 @@ fun DownloadScreen(
                                             Spacer(Modifier.width(8.dp))
                                             OutlinedButton(
                                                 onClick = { vm.startDownload("audio:${option.formatId}") },
-                                                shape = MaterialTheme.shapes.medium,
+                                                shape = DownlyUiShapes.card,
                                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
                                             ) { Text(stringResource(R.string.download_action)) }
                                         }
@@ -491,7 +493,7 @@ fun DownloadScreen(
 private fun MediaModeSelector(state: ScreenState, vm: DownlyViewModel) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
+        shape = DownlyUiShapes.card,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {

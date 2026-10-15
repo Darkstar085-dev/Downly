@@ -54,6 +54,8 @@ import com.sipun.downly.data.DownloadRecord
 import com.sipun.downly.data.DownloadStatus
 import com.sipun.downly.data.ScreenState
 import com.sipun.downly.presentation.DownlyViewModel
+import com.sipun.downly.presentation.theme.DownlyUiShapes
+import com.sipun.downly.presentation.theme.downlyCardBorder
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -114,8 +116,9 @@ fun ActivityScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier) 
             ) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                    shape = DownlyUiShapes.card,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    border = downlyCardBorder()
                 ) {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 30.dp),
@@ -222,7 +225,7 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
     val details by produceState(initialValue = MediaCardDetails(), key1 = record.filePath) {
         value = withContext(Dispatchers.IO) { resolveMediaDetails(context, record.filePath, audio) }
     }
-    Card(shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+    Card(shape = DownlyUiShapes.card, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = downlyCardBorder()) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 Box(

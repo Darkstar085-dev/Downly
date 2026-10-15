@@ -74,6 +74,8 @@ import coil.compose.AsyncImage
 import com.sipun.downly.data.MediaMode
 import com.sipun.downly.ui.update.UpdateContent
 import com.sipun.downly.presentation.DownlyViewModel
+import com.sipun.downly.presentation.theme.DownlyUiShapes
+import com.sipun.downly.presentation.theme.downlyCardBorder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
@@ -272,8 +274,9 @@ fun DownlyApp(
             ) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 560.dp),
-                    shape = RoundedCornerShape(28.dp),
+                    shape = DownlyUiShapes.dialog,
                     color = MaterialTheme.colorScheme.surface,
+                    border = downlyCardBorder(),
                     tonalElevation = 8.dp,
                     shadowElevation = 18.dp
                 ) {
@@ -301,8 +304,9 @@ fun DownlyApp(
                         }
 
                         Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerLow
+                            shape = DownlyUiShapes.card,
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            border = downlyCardBorder()
                         ) {
                             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -366,7 +370,7 @@ fun DownlyApp(
                                         }
                                     }
                                 }
-                                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                                Surface(shape = DownlyUiShapes.nestedCard, color = MaterialTheme.colorScheme.surfaceContainer, border = downlyCardBorder()) {
                                     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                                         DetailRow(Icons.Rounded.InsertDriveFile, "File type", if (isAudio) "MP3 (Audio)" else details.mimeType.substringAfter('/').uppercase().ifBlank { "Video" })
                                         DetailRow(Icons.Rounded.Storage, "File size", formatFileSize(details.sizeBytes))

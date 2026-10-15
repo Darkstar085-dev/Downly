@@ -47,7 +47,7 @@ fun DownlyTheme(
             surfaceContainerLow = Color.Black,
             surfaceContainer = Color.Black,
             secondaryContainer = Color(0xFF101010),
-            outlineVariant = Color(0xFF303030)
+            outlineVariant = Color(0xFF484848)
         )
     } else if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)

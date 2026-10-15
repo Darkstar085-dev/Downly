@@ -16,7 +16,7 @@ data class DownloadRecord(
     val timestamp: Long = System.currentTimeMillis()
 )
 
-data class QualityOption(val quality: String, val height: Int, val estimatedBytes: Long?)
+data class QualityOption(val quality: String, val height: Int, val estimatedBytes: Long?, val formatSelector: String = "")
 data class AudioOption(val formatId: String, val quality: String, val bitrate: Int, val estimatedBytes: Long?)
 
 data class MediaPreview(

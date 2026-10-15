@@ -388,7 +388,7 @@ fun DownloadScreen(
                                                 Text(option.estimatedBytes?.let { stringResource(R.string.file_size_about, formatBytes(it)) } ?: stringResource(R.string.file_size_varies), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                             OutlinedButton(
-                                                onClick = { vm.startDownload(option.quality) },
+                                                onClick = { vm.startDownload("video:" + option.formatSelector) },
                                                 shape = RoundedCornerShape(14.dp),
                                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
                                             ) { Text(stringResource(R.string.download_action)) }

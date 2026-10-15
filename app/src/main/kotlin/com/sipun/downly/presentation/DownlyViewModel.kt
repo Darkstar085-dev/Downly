@@ -236,8 +236,8 @@ class DownlyViewModel : ViewModel() {
         val current = _state.value
         val selectedQuality = when (current.mode) {
             MediaMode.VIDEO -> current.preview?.qualityOptions
-                ?.takeIf { it.isNotEmpty() }
-                ?.let { recommendQuality(it, current.connectionType) }
+                ?.maxByOrNull { it.height }
+                ?.let { "video:${it.formatSelector}" }
                 ?: current.recommendedQuality
             MediaMode.AUDIO -> current.preview?.audioOptions
                 ?.let { recommendAudioOption(it) }
@@ -296,8 +296,10 @@ class DownlyViewModel : ViewModel() {
                     .addOption("--audio-format", "mp3")
                     .addOption("--audio-quality", if (connectionType == "Mobile data") "5" else "0")
             } else {
+                val explicitSelector = quality.takeIf { it.startsWith("video:") }?.removePrefix("video:")
                 val maxHeight = quality.removeSuffix("p").toIntOrNull()
-                val format = if (maxHeight != null) "bv*[height<=$maxHeight]+ba/b[height<=$maxHeight]" else "bv*+ba/b"
+                val format = explicitSelector?.takeIf { it.isNotBlank() }
+                    ?: if (maxHeight != null) "bv*[height<=$maxHeight]+ba/b[height<=$maxHeight]" else "bv*+ba/b"
                 request.addOption("-f", format)
                     .addOption("--merge-output-format", "mp4")
             }

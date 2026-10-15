@@ -206,7 +206,7 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val audio = isAudioRecord(record)
     val fileName = record.filePath?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: record.title
-    val folder = if (audio) "Music/Downly" else "Movies/Downly"
+    val folder = if (audio) "Downloads/Downly/Music" else "Downloads/Downly/Videos"
     val details by produceState(initialValue = MediaCardDetails(), key1 = record.filePath) {
         value = withContext(Dispatchers.IO) { resolveMediaDetails(context, record.filePath, audio) }
     }
@@ -329,7 +329,7 @@ private fun isAudioRecord(record: DownloadRecord): Boolean {
 private fun resolveMediaDetails(context: Context, path: String?, audio: Boolean): MediaCardDetails {
     if (path.isNullOrBlank()) return MediaCardDetails(fileType = if (audio) "Audio" else "Video")
     val name = path.substringAfterLast('/')
-    val relativePath = path.substringBeforeLast('/', if (audio) "Music/Downly" else "Movies/Downly") + "/"
+    val relativePath = path.substringBeforeLast('/', if (audio) "Download/Downly/Music" else "Download/Downly/Videos") + "/"
     val collection = if (audio) MediaStore.Audio.Media.EXTERNAL_CONTENT_URI else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
     var artwork: Bitmap? = null
     var size = "—"
@@ -365,7 +365,7 @@ private fun formatSize(bytes: Long): String = when {
 
 private fun findMediaUri(context: Context, path: String, audio: Boolean): Uri? {
     val name = path.substringAfterLast('/')
-    val relativePath = path.substringBeforeLast('/', if (audio) "Music/Downly" else "Movies/Downly") + "/"
+    val relativePath = path.substringBeforeLast('/', if (audio) "Download/Downly/Music" else "Download/Downly/Videos") + "/"
     val collection = if (audio) MediaStore.Audio.Media.EXTERNAL_CONTENT_URI else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
     return runCatching {
         val selection = MediaStore.MediaColumns.DISPLAY_NAME + " = ? AND " + MediaStore.MediaColumns.RELATIVE_PATH + " = ?"
@@ -394,8 +394,13 @@ private fun showInFolder(context: Context, path: String, audio: Boolean) {
     val viewIntent = Intent(Intent.ACTION_VIEW).setDataAndType(folderUri, DocumentsContract.Document.MIME_TYPE_DIR)
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     runCatching {
-        if (viewIntent.resolveActivity(context.packageManager) != null) context.startActivity(viewIntent)
-        else {
+        if (viewIntent.resolveActivity(context.packageManager) != null) {
+            runCatching { context.startActivity(viewIntent) }.getOrElse {
+                val picker = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) picker.putExtra(DocumentsContract.EXTRA_INITIAL_URI, folderUri)
+                context.startActivity(picker)
+            }
+        } else {
             val picker = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) picker.putExtra(DocumentsContract.EXTRA_INITIAL_URI, folderUri)
             context.startActivity(picker)

@@ -538,12 +538,13 @@ class DownlyViewModel : ViewModel() {
         }
     }
 
+
     private fun publishToMediaStore(context: Context, source: File, mode: MediaMode, mediaId: String?): String {
         val resolver = context.contentResolver
         val relativeDirectory = if (mode == MediaMode.AUDIO) {
-            Environment.DIRECTORY_MUSIC + "/Downly/"
+            Environment.DIRECTORY_DOWNLOADS + "/Downly/Music/"
         } else {
-            Environment.DIRECTORY_MOVIES + "/Downly/"
+            Environment.DIRECTORY_DOWNLOADS + "/Downly/Videos/"
         }
         val mimeType = if (mode == MediaMode.AUDIO) {
             "audio/mpeg"

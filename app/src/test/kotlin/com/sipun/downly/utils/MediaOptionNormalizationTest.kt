@@ -15,6 +15,27 @@ class MediaOptionNormalizationTest {
     }
 
     @Test
+    fun bitrateEstimateScalesWithBitrateAndDuration() {
+        assertEquals(10_688_000L, estimateBytesFromBitrate(128.0, 668))
+        assertEquals(21_376_000L, estimateBytesFromBitrate(256.0, 668))
+        assertEquals(21_376_000L, estimateBytesFromBitrate(128.0, 1336))
+        assertNull(estimateBytesFromBitrate(0.0, 668))
+        assertNull(estimateBytesFromBitrate(128.0, 0))
+    }
+
+    @Test
+    fun sizeResolutionPrefersExactThenRemoteThenApproximateThenEstimate() {
+        assertEquals(1000L, resolveSizeValue(1000L, 2000L, 3000L, 128.0, 60).bytes)
+        assertEquals(false, resolveSizeValue(1000L, 2000L, 3000L, 128.0, 60).approximate)
+        assertEquals(2000L, resolveSizeValue(0L, 2000L, 3000L, 128.0, 60).bytes)
+        assertEquals(false, resolveSizeValue(0L, 2000L, 3000L, 128.0, 60).approximate)
+        assertEquals(3000L, resolveSizeValue(0L, null, 3000L, 128.0, 60).bytes)
+        assertEquals(true, resolveSizeValue(0L, null, 3000L, 128.0, 60).approximate)
+        assertEquals(960000L, resolveSizeValue(0L, null, 0L, 128.0, 60).bytes)
+        assertEquals(true, resolveSizeValue(0L, null, 0L, 128.0, 60).approximate)
+    }
+
+    @Test
     fun audioBitrateMapsToNearestCommonLevel() {
         assertEquals(128, commonAudioBitrate(129))
         assertEquals(128, commonAudioBitrate(122))

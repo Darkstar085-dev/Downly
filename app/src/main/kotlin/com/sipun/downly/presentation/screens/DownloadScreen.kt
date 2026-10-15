@@ -345,18 +345,18 @@ fun DownloadScreen(
                                     if (state.connectionType == "Wi-Fi" || state.connectionType == "Ethernet") Icon(Icons.Rounded.Wifi, null, tint = colorResource(R.color.downly_accent)) else Icon(Icons.Rounded.SignalCellularAlt, null, tint = colorResource(R.color.downly_accent))
                                 }
                                 if (state.mode == MediaMode.VIDEO) {
-                                    val estimate = preview.qualityOptions.firstOrNull { it.quality == state.recommendedQuality }?.estimatedBytes
+                                    val recommendedVideo = preview.qualityOptions.firstOrNull { it.quality == state.recommendedQuality }
                                     Text(
                                         "Best available " + state.recommendedQuality +
-                                            (estimate?.let { " · about " + formatBytes(it) } ?: " · size depends on source"),
+                                            (recommendedVideo?.estimatedBytes?.let { bytes -> " · " + (if (recommendedVideo.sizeIsApproximate) "about " else "") + formatBytes(bytes) } ?: " · size depends on source"),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 } else {
                                     val recommendedAudio = recommendAudioOption(preview.audioOptions)
                                     Text(
-                                        recommendedAudio?.let {
-                                            "Best available " + it.quality + (it.estimatedBytes?.let { bytes -> " · about " + formatBytes(bytes) } ?: " · size depends on source")
+                                        recommendedAudio?.let { option ->
+                                            "Best available " + option.quality + (option.estimatedBytes?.let { bytes -> " · " + (if (option.sizeIsApproximate) "about " else "") + formatBytes(bytes) } ?: " · size depends on source")
                                         } ?: stringResource(R.string.best_audio_explanation),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.bodySmall
@@ -385,7 +385,7 @@ fun DownloadScreen(
                                         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Column(Modifier.weight(1f)) {
                                                 Text(option.quality + if (option.quality == state.recommendedQuality) " · " + stringResource(R.string.recommended) else "", fontWeight = FontWeight.Bold)
-                                                Text(option.estimatedBytes?.let { stringResource(R.string.file_size_about, formatBytes(it)) } ?: stringResource(R.string.file_size_varies), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text(option.estimatedBytes?.let { if (option.sizeIsApproximate) stringResource(R.string.file_size_about, formatBytes(it)) else formatBytes(it) } ?: stringResource(R.string.file_size_varies), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                             OutlinedButton(
                                                 onClick = { vm.startDownload("video:" + option.formatSelector) },
@@ -432,7 +432,7 @@ fun DownloadScreen(
                                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                                 Text(option.quality + if (isBestAudio) " · " + stringResource(R.string.recommended) else "", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = if (isBestAudio) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface)
                                                 Text(
-                                                    option.estimatedBytes?.let { stringResource(R.string.file_size_about, formatBytes(it)) } ?: stringResource(R.string.file_size_varies),
+                                                    option.estimatedBytes?.let { if (option.sizeIsApproximate) stringResource(R.string.file_size_about, formatBytes(it)) else formatBytes(it) } ?: stringResource(R.string.file_size_varies),
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )

@@ -19,8 +19,7 @@ import com.sipun.downly.data.DuplicateDownloadPrompt
 import com.sipun.downly.data.MediaMode
 import com.sipun.downly.data.MediaPreview
 import com.sipun.downly.data.ScreenState
-import com.sipun.downly.utils.buildAudioOptions
-import com.sipun.downly.utils.buildQualityOptions
+import com.sipun.downly.utils.buildMediaOptions
 import com.sipun.downly.utils.decodeText
 import com.sipun.downly.utils.defaultQualityFor
 import com.sipun.downly.utils.encodeText
@@ -217,14 +216,16 @@ class DownlyViewModel : ViewModel() {
         worker.execute {
             try {
                 val info: VideoInfo = YoutubeDL.getInfo(url)
+                val mediaOptions = buildMediaOptions(info.formats.orEmpty(), info.duration)
                 val preview = MediaPreview(
                     title = info.title?.takeIf { it.isNotBlank() } ?: url,
                     uploader = info.uploader.orEmpty(),
                     duration = formatDuration(info.duration),
                     url = info.webpageUrl ?: url,
                     thumbnailUrl = info.thumbnail?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
-                    qualityOptions = buildQualityOptions(info.formats.orEmpty()),
-                    audioOptions = buildAudioOptions(info.formats.orEmpty())
+                    durationSeconds = info.duration,
+                    qualityOptions = mediaOptions.qualityOptions,
+                    audioOptions = mediaOptions.audioOptions
                 )
                 mutate { copy(busy = false, preview = preview, recommendedQuality = recommendQuality(preview.qualityOptions, connectionType), message = "Media details ready") }
             } catch (error: Exception) {

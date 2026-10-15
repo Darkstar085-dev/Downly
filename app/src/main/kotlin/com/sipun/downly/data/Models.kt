@@ -18,8 +18,24 @@ data class DownloadRecord(
     val quality: String = "Best"
 )
 
-data class QualityOption(val quality: String, val height: Int, val estimatedBytes: Long?, val formatSelector: String = "")
-data class AudioOption(val formatId: String, val quality: String, val bitrate: Int, val estimatedBytes: Long?)
+data class QualityOption(
+    val quality: String,
+    val height: Int,
+    val estimatedBytes: Long?,
+    val formatSelector: String = "",
+    val sizeIsApproximate: Boolean = true
+)
+data class AudioOption(
+    val formatId: String,
+    val quality: String,
+    val bitrate: Int,
+    val estimatedBytes: Long?,
+    val sizeIsApproximate: Boolean = true
+)
+data class MediaOptions(
+    val qualityOptions: List<QualityOption>,
+    val audioOptions: List<AudioOption>
+)
 
 data class MediaPreview(
     val title: String,
@@ -27,6 +43,7 @@ data class MediaPreview(
     val duration: String,
     val url: String,
     val thumbnailUrl: String? = null,
+    val durationSeconds: Int = 0,
     val qualityOptions: List<QualityOption> = emptyList(),
     val audioOptions: List<AudioOption> = emptyList()
 )

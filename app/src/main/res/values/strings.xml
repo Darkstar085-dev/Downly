@@ -135,5 +135,5 @@
     <string name="update_kilobytes">KB</string>
     <string name="update_megabytes">MB</string>
     <string name="update_gigabytes">GB</string>
-    <string name="update_size_unit">%.1f %2$s</string>
+    <string name="update_size_unit">%1$.1f %2$s</string>
 </resources>

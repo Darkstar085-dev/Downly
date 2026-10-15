@@ -24,7 +24,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Folder
@@ -372,7 +372,7 @@ fun DownlyApp(
                                 }
                                 Surface(shape = DownlyUiShapes.nestedCard, color = MaterialTheme.colorScheme.surfaceContainer, border = downlyCardBorder()) {
                                     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                                        DetailRow(Icons.Rounded.InsertDriveFile, "File type", if (isAudio) "MP3 (Audio)" else details.mimeType.substringAfter('/').uppercase().ifBlank { "Video" })
+                                        DetailRow(Icons.AutoMirrored.Rounded.InsertDriveFile, "File type", if (isAudio) "MP3 (Audio)" else details.mimeType.substringAfter('/').uppercase().ifBlank { "Video" })
                                         DetailRow(Icons.Rounded.Storage, "File size", formatFileSize(details.sizeBytes))
                                         DetailRow(
                                             Icons.Rounded.CalendarMonth,

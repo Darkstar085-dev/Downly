@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import com.sipun.downly.data.DownloadRecord
 import com.sipun.downly.data.DownloadStatus
@@ -206,7 +207,18 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val audio = isAudioRecord(record)
     val fileName = record.filePath?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: record.title
-    val folder = if (audio) "Downloads/Downly/Music" else "Downloads/Downly/Videos"
+    var showCompletedMessage by remember(record.id, record.status) {
+        mutableStateOf(record.status == DownloadStatus.COMPLETE)
+    }
+    LaunchedEffect(record.id, record.status) {
+        if (record.status == DownloadStatus.COMPLETE) {
+            showCompletedMessage = true
+            delay(5_000)
+            showCompletedMessage = false
+        } else {
+            showCompletedMessage = false
+        }
+    }
     val details by produceState(initialValue = MediaCardDetails(), key1 = record.filePath) {
         value = withContext(Dispatchers.IO) { resolveMediaDetails(context, record.filePath, audio) }
     }
@@ -228,18 +240,14 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
                             modifier = Modifier.size(42.dp))
                     }
                 }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(fileName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium,
-                        maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Icon(Icons.Rounded.Folder, contentDescription = null, tint = colorResource(R.color.downly_accent), modifier = Modifier.size(19.dp))
-                        Text(folder, color = colorResource(R.color.downly_accent), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                        maxLines = 4, overflow = TextOverflow.Ellipsis)
                 }
                 if (record.status == DownloadStatus.QUEUED || record.status == DownloadStatus.DOWNLOADING) {
-                    IconButton(onClick = { vm.cancel(record) }) { Icon(Icons.Rounded.Close, stringResource(R.string.cancel_download)) }
-                } else {
-                    IconButton(onClick = { vm.delete(record) }) { Icon(Icons.Rounded.Close, stringResource(R.string.remove_from_history)) }
+                    IconButton(onClick = { vm.cancel(record) }) {
+                        Icon(Icons.Rounded.Close, stringResource(R.string.cancel_download))
+                    }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -267,19 +275,21 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
                     Text(stringResource(R.string.pause_download))
                 }
             } else {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(
-                        when (record.status) {
-                            DownloadStatus.COMPLETE -> Icons.Rounded.CheckCircle
-                            DownloadStatus.FAILED -> Icons.Rounded.Refresh
-                            else -> Icons.Rounded.Download
-                        },
-                        contentDescription = null,
-                        tint = if (record.status == DownloadStatus.FAILED) MaterialTheme.colorScheme.error else colorResource(R.color.downly_accent),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(record.detail, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (record.status != DownloadStatus.COMPLETE || showCompletedMessage) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(
+                            when (record.status) {
+                                DownloadStatus.COMPLETE -> Icons.Rounded.CheckCircle
+                                DownloadStatus.FAILED -> Icons.Rounded.Refresh
+                                else -> Icons.Rounded.Download
+                            },
+                            contentDescription = null,
+                            tint = if (record.status == DownloadStatus.FAILED) MaterialTheme.colorScheme.error else colorResource(R.color.downly_accent),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(record.detail, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
                 }
                 if (record.status == DownloadStatus.FAILED || record.status == DownloadStatus.PAUSED) {
                     Button(
@@ -330,7 +340,7 @@ private fun resolveMediaDetails(context: Context, path: String?, audio: Boolean)
     if (path.isNullOrBlank()) return MediaCardDetails(fileType = if (audio) "Audio" else "Video")
     val name = path.substringAfterLast('/')
     val relativePath = path.substringBeforeLast('/', if (audio) "Download/Downly/Music" else "Download/Downly/Videos") + "/"
-    val collection = if (audio) MediaStore.Audio.Media.EXTERNAL_CONTENT_URI else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+    val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
     var artwork: Bitmap? = null
     var size = "—"
     var mime = name.substringAfterLast('.', "").uppercase(Locale.ROOT)
@@ -366,7 +376,7 @@ private fun formatSize(bytes: Long): String = when {
 private fun findMediaUri(context: Context, path: String, audio: Boolean): Uri? {
     val name = path.substringAfterLast('/')
     val relativePath = path.substringBeforeLast('/', if (audio) "Download/Downly/Music" else "Download/Downly/Videos") + "/"
-    val collection = if (audio) MediaStore.Audio.Media.EXTERNAL_CONTENT_URI else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+    val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
     return runCatching {
         val selection = MediaStore.MediaColumns.DISPLAY_NAME + " = ? AND " + MediaStore.MediaColumns.RELATIVE_PATH + " = ?"
         context.contentResolver.query(collection, arrayOf(MediaStore.MediaColumns._ID), selection, arrayOf(name, relativePath), null)?.use { cursor ->

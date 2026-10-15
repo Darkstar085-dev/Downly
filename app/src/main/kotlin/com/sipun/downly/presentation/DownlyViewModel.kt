@@ -429,11 +429,7 @@ class DownlyViewModel : ViewModel() {
         } else {
             Environment.DIRECTORY_DOWNLOADS + "/Downly/Videos/"
         }
-        val collection = if (mode == MediaMode.AUDIO) {
-            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        } else {
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        }
+        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
         val knownUri = mediaId?.let { readMediaIdMapping(context, it) }
         val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME)
         val selection = "${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
@@ -556,11 +552,7 @@ class DownlyViewModel : ViewModel() {
                 else -> "video/mp4"
             }
         }
-        val collection = if (mode == MediaMode.AUDIO) {
-            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        } else {
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        }
+        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, source.name)
             put(MediaStore.MediaColumns.MIME_TYPE, mimeType)

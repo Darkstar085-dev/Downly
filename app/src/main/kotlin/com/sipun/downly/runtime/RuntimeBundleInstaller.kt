@@ -51,7 +51,7 @@ object RuntimeBundleInstaller {
             }
             throw error
         }
-        val (assetName, downloadUrl) = release
+        val (assetName, downloadUrl, expectedDigest) = release
         val versionDirectoryName = assetName.removeSuffix(".zip")
         val installed = File(root, versionDirectoryName)
         if (isInstalledValid(installed)) {
@@ -65,6 +65,9 @@ object RuntimeBundleInstaller {
         try {
             onProgress(null)
             download(downloadUrl, downloaded, onProgress)
+            if (sha256(downloaded) != expectedDigest) {
+                throw IOException("Libraries archive SHA-256 verification failed")
+            }
             onProgress(0.90f)
             deleteRecursively(staging)
             if (!staging.mkdirs()) throw IOException("Cannot create Libraries staging directory")
@@ -130,7 +133,7 @@ object RuntimeBundleInstaller {
         }
     }
 
-    private fun latestReleaseAsset(): Pair<String, String> {
+    private fun latestReleaseAsset(): Triple<String, String, String> {
         var connection: HttpURLConnection? = null
         try {
             connection = (URL(RELEASE_API).openConnection() as HttpURLConnection).apply {
@@ -155,7 +158,12 @@ object RuntimeBundleInstaller {
                 val name = asset.optString("name")
                 val url = asset.optString("browser_download_url")
                 if (expectedAssetName.matches(name) && url.startsWith("https://github.com/")) {
-                    return name to url
+                    val digest = asset.optString("digest")
+                        .removePrefix("sha256:")
+                        .takeIf { it.matches(Regex("^[0-9a-fA-F]{64}$")) }
+                        ?.lowercase()
+                        ?: throw IOException("Libraries archive release has no valid SHA-256 digest")
+                    return Triple(name, url, digest)
                 }
             }
             throw IOException("Versioned Libraries archive was not found in the latest release")
@@ -206,12 +214,14 @@ object RuntimeBundleInstaller {
     private fun extractBundle(bundle: File, destination: File) {
         val allowed = setOf("libpython.zip.so", "libffmpeg.zip.so", "libaria2c.zip.so", "SHA256SUMS")
         var count = 0
+        var extractedBytes = 0L
+        val seen = mutableSetOf<String>()
         ZipInputStream(BufferedInputStream(FileInputStream(bundle))).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
                 if (entry.isDirectory || entry.name !in allowed || entry.name.contains('/') ||
-                    entry.name.contains('\\')
-                ) throw IOException("Unexpected Libraries archive ZIP entry")
+                    entry.name.contains('\\') || !seen.add(entry.name)
+                ) throw IOException("Unexpected or duplicate Libraries archive ZIP entry")
                 val output = File(destination, entry.name)
                 FileOutputStream(output).use { stream ->
                     val buffer = ByteArray(64 * 1024)
@@ -220,7 +230,10 @@ object RuntimeBundleInstaller {
                         val read = zip.read(buffer)
                         if (read < 0) break
                         total += read
-                        if (total > MAX_BUNDLE_BYTES) throw IOException("Libraries archive entry exceeds size limit")
+                        extractedBytes += read
+                        if (total > MAX_BUNDLE_BYTES || extractedBytes > MAX_BUNDLE_BYTES) {
+                            throw IOException("Libraries archive extraction exceeds size limit")
+                        }
                         stream.write(buffer, 0, read)
                     }
                     stream.fd.sync()
@@ -229,7 +242,9 @@ object RuntimeBundleInstaller {
                 zip.closeEntry()
             }
         }
-        if (count != allowed.size) throw IOException("Libraries archive is missing required files")
+        if (count != allowed.size || seen != allowed) {
+            throw IOException("Libraries archive is missing required files")
+        }
     }
 
     private fun verifyChecksums(directory: File, manifest: File): Boolean {

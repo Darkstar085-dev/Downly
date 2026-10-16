@@ -226,4 +226,12 @@ jobs:
             echo "::error::Debug APK not found"
             exit 1
           }
-          python .github/scripts/telegram.py "$apk" "Downly Debug APK"
+          version_name="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          test -n "$version_name" || {
+            echo "::error::Could not read app versionName from app/build.gradle.kts"
+            exit 1
+          }
+          short_sha="${GITHUB_SHA:0:7}"
+          renamed_apk="app/build/outputs/apk/debug/Downly_v${version_name}-${short_sha}.apk"
+          mv "$apk" "$renamed_apk"
+          python .github/scripts/telegram.py "$renamed_apk" "Downly Debug APK v${version_name} (${short_sha})"

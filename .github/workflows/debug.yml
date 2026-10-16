@@ -143,6 +143,31 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Restore persistent debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: downly-debug-keystore-v1
+
+      - name: Generate debug keystore if cache is empty
+        run: |
+          set -euo pipefail
+          keystore="$HOME/.android/debug.keystore"
+          if [ ! -f "$keystore" ]; then
+            mkdir -p "$HOME/.android"
+            keytool -genkeypair -v \
+              -keystore "$keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          keytool -list -keystore "$keystore" -storepass android -alias androiddebugkey >/dev/null
+          echo "Persistent debug keystore is ready."
+
       - name: Download verified Maven Local artifacts
         uses: actions/download-artifact@v6
         with:

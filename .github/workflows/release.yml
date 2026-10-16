@@ -91,7 +91,7 @@ jobs:
           cp -a "$source/." "$RUNNER_TEMP/maven-repo/"
 
       - name: Upload Maven Local artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: downly-maven-local
           path: ${{ runner.temp }}/maven-repo/
@@ -103,7 +103,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download Maven Local artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: downly-maven-local
           path: ${{ runner.temp }}/maven-repo
@@ -147,7 +147,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Download verified Maven Local artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: downly-maven-local
           path: ${{ runner.temp }}/maven-repo

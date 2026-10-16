@@ -90,7 +90,7 @@ jobs:
           cp -a "$source/." "$RUNNER_TEMP/maven-repo/"
 
       - name: Upload Maven Local artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: downly-maven-local
           path: ${{ runner.temp }}/maven-repo/
@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download Maven Local artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: downly-maven-local
           path: ${{ runner.temp }}/maven-repo
@@ -144,7 +144,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Restore persistent debug keystore
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.android/debug.keystore
           key: downly-debug-keystore-v1
@@ -169,7 +169,7 @@ jobs:
           echo "Persistent debug keystore is ready."
 
       - name: Download verified Maven Local artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: downly-maven-local
           path: ${{ runner.temp }}/maven-repo
@@ -205,7 +205,7 @@ jobs:
         run: ./gradlew :app:assembleDebug --stacktrace
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 

@@ -401,7 +401,8 @@ class DownlyViewModel : ViewModel() {
             val latest = _state.value.history.firstOrNull { it.id == record.id }
             val status = when {
                 pausedIds.remove(record.id) || latest?.status == DownloadStatus.PAUSED -> DownloadStatus.PAUSED
-                error is YoutubeDL.CanceledException -> DownloadStatus.CANCELLED
+                cancelledIds.remove(record.id) || latest?.status == DownloadStatus.CANCELLED ||
+                    error is YoutubeDL.CanceledException -> DownloadStatus.CANCELLED
                 else -> DownloadStatus.FAILED
             }
             setRecord(record.id) {
@@ -634,8 +635,13 @@ class DownlyViewModel : ViewModel() {
             setRecord(record.id) { copy(status = DownloadStatus.CANCELLED, detail = "Cancelled before start") }
             return
         }
-        if (current.status == DownloadStatus.DOWNLOADING && YoutubeDL.destroyProcessById(record.id)) {
-            setRecord(record.id) { copy(status = DownloadStatus.CANCELLED, detail = "Cancelled") }
+        if (current.status == DownloadStatus.DOWNLOADING) {
+            cancelledIds.add(record.id)
+            if (YoutubeDL.destroyProcessById(record.id)) {
+                setRecord(record.id) { copy(status = DownloadStatus.CANCELLED, detail = "Cancelled") }
+            } else {
+                cancelledIds.remove(record.id)
+            }
         }
     }
 

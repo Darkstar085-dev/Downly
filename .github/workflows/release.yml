@@ -31,7 +31,6 @@ jobs:
           git -C youtubedl-kotlin checkout --detach "$latest_tag"
           echo "Using youtubedl-kotlin tag: $latest_tag"
 
-
       - name: Checkout Downly dependency declarations
         uses: actions/checkout@v7
         with:

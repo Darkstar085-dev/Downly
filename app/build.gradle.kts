@@ -28,8 +28,8 @@ android {
         applicationId = "com.sipun.downly"
         minSdk = 30
         targetSdk = 37
-        versionCode = 11
-        versionName = "1.1"
+        versionCode = 12
+        versionName = "1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -101,9 +101,9 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.kotlinx.serialization.json)
 
-    implementation("io.github.darkstar085.youtubedl-kotlin:library:1.0.0")
-    implementation("io.github.darkstar085.youtubedl-kotlin:ffmpeg:1.0.0")
-    implementation("io.github.darkstar085.youtubedl-kotlin:aria2c:1.0.0")
+    implementation("io.github.darkstar085.youtubedl-kotlin:library:1.0.1")
+    implementation("io.github.darkstar085.youtubedl-kotlin:ffmpeg:1.0.1")
+    implementation("io.github.darkstar085.youtubedl-kotlin:aria2c:1.0.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

@@ -133,7 +133,7 @@ class DownloadWorker(
             record.quality,
             inputData.getString(CONNECTION_KEY).orEmpty()
         )
-        viewModel.flushHistoryForWorker()
+        viewModel.flushHistoryForWorker(id)
         DownloadWorkManager.notifyFinished(id)
         Result.success()
     }

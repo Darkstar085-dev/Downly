@@ -337,8 +337,57 @@ class DownlyViewModel : ViewModel() {
             mode = current.mode,
             quality = selectedQuality
         )
-        mutate { copy(history = listOf(record) + history, url = "", preview = null, tab = 0, message = "Added to download queue") }
+        queueDownloadRecord(record)
         scheduleDownload(record, current.mode, selectedQuality, current.connectionType)
+    }
+
+    private fun queueDownloadRecord(record: DownloadRecord) {
+        val context = appContext ?: return
+        val queue = {
+            val current = _state.value
+            val next = current.copy(
+                history = enqueueDownloadRecord(current.history, record),
+                url = "",
+                preview = null,
+                tab = 0,
+                message = "Added to download queue"
+            )
+            _state.value = next
+            persistHistoryImmediately(context, next.history)
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            queue()
+        } else {
+            val queued = java.util.concurrent.CountDownLatch(1)
+            mainHandler.post {
+                queue()
+                queued.countDown()
+            }
+            queued.await()
+        }
+    }
+
+    private fun removeDownloadRecord(id: String) {
+        val context = appContext ?: return
+        val remove = {
+            val current = _state.value
+            val next = current.copy(
+                history = current.history.filterNot { it.id == id },
+                message = "Download cancelled"
+            )
+            _state.value = next
+            persistHistoryImmediately(context, next.history)
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            remove()
+        } else {
+            val removed = java.util.concurrent.CountDownLatch(1)
+            mainHandler.post {
+                remove()
+                removed.countDown()
+            }
+            removed.await()
+        }
     }
 
     private fun scheduleDownload(record: DownloadRecord, mode: MediaMode, quality: String, connectionType: String) {
@@ -356,7 +405,7 @@ class DownlyViewModel : ViewModel() {
         executeDownload(record, mode, quality, connectionType)
     }
 
-    fun flushHistoryForWorker() {
+    fun flushHistoryForWorker(id: String) {
         val latch = java.util.concurrent.CountDownLatch(1)
         mainHandler.post { latch.countDown() }
         latch.await()
@@ -364,7 +413,8 @@ class DownlyViewModel : ViewModel() {
         val persistenceLatch = java.util.concurrent.CountDownLatch(1)
         persistenceWorker.execute { persistenceLatch.countDown() }
         persistenceLatch.await()
-        val encoded = encodeHistory(_state.value.history)
+        val workerRecord = _state.value.history.firstOrNull { it.id == id }
+        val encoded = encodeHistory(mergeWorkerRecordIntoHistory(readHistory(context), workerRecord))
         context.getSharedPreferences("downly-history", Context.MODE_PRIVATE)
             .edit()
             .putString("records", encoded)
@@ -729,21 +779,12 @@ class DownlyViewModel : ViewModel() {
     }
 
     fun cancel(record: DownloadRecord) {
+        cancelledIds.add(record.id)
+        pausedIds.remove(record.id)
         appContext?.let { DownloadWorkManager.cancel(it, record.id) }
         appContext?.let { DownloadNotificationHelper.cancel(it, record.id.hashCode()) }
-        val current = _state.value.history.firstOrNull { it.id == record.id } ?: return
-        if (current.status == DownloadStatus.QUEUED) {
-            setRecord(record.id) { copy(status = DownloadStatus.CANCELLED, detail = "Cancelled before start") }
-            return
-        }
-        if (current.status == DownloadStatus.DOWNLOADING) {
-            cancelledIds.add(record.id)
-            if (YoutubeDL.destroyProcessById(record.id)) {
-                setRecord(record.id) { copy(status = DownloadStatus.CANCELLED, detail = "Cancelled") }
-            } else {
-                cancelledIds.remove(record.id)
-            }
-        }
+        YoutubeDL.destroyProcessById(record.id)
+        removeDownloadRecord(record.id)
     }
 
     fun removePaused(record: DownloadRecord) {
@@ -806,6 +847,18 @@ class DownlyViewModel : ViewModel() {
             context.getSharedPreferences("downly-history", Context.MODE_PRIVATE).edit()
                 .putString("records", encoded).commit()
         }
+    }
+
+    private fun persistHistoryImmediately(context: Context, snapshot: List<DownloadRecord>) {
+        if (!historyLoaded) return
+        val saved = java.util.concurrent.CountDownLatch(1)
+        val encoded = encodeHistory(snapshot)
+        persistenceWorker.execute {
+            context.getSharedPreferences("downly-history", Context.MODE_PRIVATE).edit()
+                .putString("records", encoded).commit()
+            saved.countDown()
+        }
+        saved.await()
     }
 
     private fun persistDuplicatePrompt(context: Context, prompt: DuplicateDownloadPrompt) {

@@ -35,6 +35,7 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -76,6 +77,8 @@ private object RuntimeLibraryDirectoryConfiguration {
 class DownlyViewModel : ViewModel() {
     private val worker = Executors.newSingleThreadExecutor()
     private val cancelledIds = ConcurrentHashMap.newKeySet<String>()
+    private val queuedTaskGenerations = ConcurrentHashMap<String, Long>()
+    private val nextTaskGeneration = AtomicLong()
     private val pausedIds = ConcurrentHashMap.newKeySet<String>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val persistenceWorker = Executors.newSingleThreadExecutor()
@@ -310,9 +313,16 @@ class DownlyViewModel : ViewModel() {
             quality = selectedQuality
         )
         mutate { copy(history = listOf(record) + history, tab = 1, message = "Added to download activity") }
+        scheduleDownload(record, current.mode, selectedQuality, current.connectionType)
+    }
+
+    private fun scheduleDownload(record: DownloadRecord, mode: MediaMode, quality: String, connectionType: String) {
+        val generation = nextTaskGeneration.incrementAndGet()
+        queuedTaskGenerations[record.id] = generation
         worker.execute {
+            if (!queuedTaskGenerations.remove(record.id, generation)) return@execute
             if (cancelledIds.remove(record.id)) return@execute
-            executeDownload(record, current.mode, selectedQuality, current.connectionType)
+            executeDownload(record, mode, quality, connectionType)
         }
     }
 
@@ -585,7 +595,7 @@ class DownlyViewModel : ViewModel() {
     fun pause(record: DownloadRecord) {
         val current = _state.value.history.firstOrNull { it.id == record.id } ?: return
         if (current.status == DownloadStatus.QUEUED) {
-            cancelledIds.add(record.id)
+            queuedTaskGenerations.remove(record.id)
             pausedIds.add(record.id)
             setRecord(record.id) { copy(status = DownloadStatus.PAUSED, detail = "Paused · tap Resume to continue") }
             return
@@ -607,26 +617,20 @@ class DownlyViewModel : ViewModel() {
         val mode = current.mode
         val quality = current.quality
         setRecord(record.id) { copy(status = DownloadStatus.QUEUED, detail = "Resuming download…") }
-        worker.execute {
-            if (cancelledIds.remove(record.id)) return@execute
-            executeDownload(current.copy(status = DownloadStatus.QUEUED), mode, quality, _state.value.connectionType)
-        }
+        scheduleDownload(current.copy(status = DownloadStatus.QUEUED), mode, quality, _state.value.connectionType)
     }
 
     fun retry(record: DownloadRecord) {
         val current = _state.value.history.firstOrNull { it.id == record.id } ?: return
         if (current.status != DownloadStatus.FAILED) return
         setRecord(record.id) { copy(status = DownloadStatus.QUEUED, progress = 0f, detail = "Retrying download…") }
-        worker.execute {
-            if (cancelledIds.remove(record.id)) return@execute
-            executeDownload(current.copy(status = DownloadStatus.QUEUED), current.mode, current.quality, _state.value.connectionType)
-        }
+        scheduleDownload(current.copy(status = DownloadStatus.QUEUED), current.mode, current.quality, _state.value.connectionType)
     }
 
     fun cancel(record: DownloadRecord) {
         val current = _state.value.history.firstOrNull { it.id == record.id } ?: return
         if (current.status == DownloadStatus.QUEUED) {
-            cancelledIds.add(record.id)
+            queuedTaskGenerations.remove(record.id)
             setRecord(record.id) { copy(status = DownloadStatus.CANCELLED, detail = "Cancelled before start") }
             return
         }

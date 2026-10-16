@@ -209,7 +209,7 @@ fun buildMediaOptions(formats: List<VideoFormat>, durationSeconds: Int = 0): Med
             quality = "$commonBitrate kbps · $extension",
             bitrate = commonBitrate,
             estimatedBytes = size?.bytes,
-            sizeIsApproximate = true
+            sizeIsApproximate = size?.approximate != false
         ) to bitrate
     }.groupBy { it.first.bitrate }.mapNotNull { (_, options) ->
         options.maxWithOrNull(

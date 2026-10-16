@@ -22,6 +22,8 @@ import com.sipun.downly.data.ScreenState
 import com.sipun.downly.utils.buildMediaOptions
 import com.sipun.downly.utils.decodeText
 import com.sipun.downly.utils.downloadQualityTag
+import com.sipun.downly.core.notification.DownloadNotificationHelper
+import com.sipun.downly.core.service.DownloadWorkManager
 import com.sipun.downly.utils.downloadFilenameQuality
 import com.sipun.downly.utils.defaultQualityFor
 import com.sipun.downly.utils.encodeText
@@ -38,7 +40,6 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,28 +83,16 @@ private object RuntimeLibraryDirectoryConfiguration {
 }
 
 class DownlyViewModel : ViewModel() {
-    private data class QueuedDownloadTask(
-        val record: DownloadRecord,
-        val mode: MediaMode,
-        val quality: String,
-        val connectionType: String,
-        val generation: Long
-    )
-
     private val worker = Executors.newSingleThreadExecutor()
-    private val downloadWorker = Executors.newSingleThreadExecutor()
-    private val queueLock = ReentrantLock()
-    private val pendingDownloads = java.util.ArrayDeque<QueuedDownloadTask>()
-    private var queueRunnerScheduled = false
     private val cancelledIds = ConcurrentHashMap.newKeySet<String>()
-    private val queuedTaskGenerations = ConcurrentHashMap<String, Long>()
-    private val nextTaskGeneration = AtomicLong()
     private val pausedIds = ConcurrentHashMap.newKeySet<String>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val persistenceWorker = Executors.newSingleThreadExecutor()
     private val _state = MutableStateFlow(ScreenState())
     val state: StateFlow<ScreenState> = _state.asStateFlow()
     private var appContext: Context? = null
+    private var unregisterWorkerListener: (() -> Unit)? = null
+    private var unregisterProgressListener: (() -> Unit)? = null
     private val initializationLock = ReentrantLock()
     @Volatile private var initializationInFlight = false
     @Volatile private var initializationComplete = false
@@ -111,9 +100,24 @@ class DownlyViewModel : ViewModel() {
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
-    fun attach(context: Context) {
+    fun attach(context: Context, observeDownloadCompletion: Boolean = true) {
         if (appContext == null) {
             appContext = context.applicationContext
+            if (observeDownloadCompletion) {
+                unregisterWorkerListener = DownloadWorkManager.addCompletionListener { id ->
+                    reloadRecordFromWorker(id)
+                }
+                unregisterProgressListener = DownloadWorkManager.addProgressListener { notificationId, percent, detail ->
+                    val id = _state.value.history.firstOrNull { it.id.hashCode() == notificationId }?.id ?: return@addProgressListener
+                    setRecord(id) {
+                        copy(
+                            status = DownloadStatus.DOWNLOADING,
+                            progress = (percent / 100f).coerceIn(0f, 1f),
+                            detail = detail
+                        )
+                    }
+                }
+            }
             val settings = appContext!!.getSharedPreferences("downly-settings", Context.MODE_PRIVATE)
             val savedTheme = settings.getString("theme_mode", "System") ?: "System"
             val dynamicColor = settings.getBoolean("dynamic_color", false)
@@ -336,34 +340,33 @@ class DownlyViewModel : ViewModel() {
     }
 
     private fun scheduleDownload(record: DownloadRecord, mode: MediaMode, quality: String, connectionType: String) {
-        val generation = nextTaskGeneration.incrementAndGet()
-        val task = QueuedDownloadTask(record, mode, quality, connectionType, generation)
-        val shouldStartRunner = queueLock.withLock {
-            queuedTaskGenerations[record.id] = generation
-            pendingDownloads.removeIf { it.record.id == record.id }
-            pendingDownloads.addLast(task)
-            if (queueRunnerScheduled) {
-                false
-            } else {
-                queueRunnerScheduled = true
-                true
-            }
+        appContext?.let { context ->
+            DownloadWorkManager.enqueue(context, record.copy(mode = mode, quality = quality), connectionType)
         }
-        if (shouldStartRunner) downloadWorker.execute { drainDownloadQueue() }
     }
 
-    private fun drainDownloadQueue() {
-        while (true) {
-            val task = queueLock.withLock {
-                val next = pendingDownloads.pollFirst()
-                if (next == null) queueRunnerScheduled = false
-                next
-            } ?: return
+    fun executeDownloadFromWorker(
+        record: DownloadRecord,
+        mode: MediaMode,
+        quality: String,
+        connectionType: String
+    ) {
+        executeDownload(record, mode, quality, connectionType)
+    }
 
-            if (!queuedTaskGenerations.remove(task.record.id, task.generation)) continue
-            if (cancelledIds.remove(task.record.id)) continue
-            executeDownload(task.record, task.mode, task.quality, task.connectionType)
-        }
+    fun flushHistoryForWorker() {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        mainHandler.post { latch.countDown() }
+        latch.await()
+        val context = appContext ?: return
+        val persistenceLatch = java.util.concurrent.CountDownLatch(1)
+        persistenceWorker.execute { persistenceLatch.countDown() }
+        persistenceLatch.await()
+        val encoded = encodeHistory(_state.value.history)
+        context.getSharedPreferences("downly-history", Context.MODE_PRIVATE)
+            .edit()
+            .putString("records", encoded)
+            .commit()
     }
 
     private fun executeDownload(record: DownloadRecord, mode: MediaMode, quality: String, connectionType: String) {
@@ -396,11 +399,22 @@ class DownlyViewModel : ViewModel() {
                     .addOption("--merge-output-format", "mp4")
             }
             if (cancelledIds.remove(record.id)) return
+            val notifId = record.id.hashCode()
+            DownloadNotificationHelper.showProgress(
+                context,
+                notifId,
+                record.title,
+                0,
+                "Starting download…"
+            )
             YoutubeDL.execute(request, record.id) { percent, eta, line ->
                 val fraction = (percent / 100f).coerceIn(0f, 1f)
+                val cleanedLine = com.sipun.downly.utils.cleanYtDlpLine(line)
+                val detailText = cleanedLine.take(150).ifBlank { if (eta > 0) "About ${eta}s left" else "Downloading…" }
+                DownloadNotificationHelper.showProgress(context, notifId, record.title, percent.toInt(), detailText)
                 setRecord(record.id) {
                     copy(status = DownloadStatus.DOWNLOADING, progress = fraction,
-                        detail = line.take(150).ifBlank { if (eta > 0) "About ${eta}s left" else "Downloading…" })
+                        detail = detailText)
                 }
             }
             val saved = folder.listFiles()?.filter { file ->
@@ -436,6 +450,7 @@ class DownlyViewModel : ViewModel() {
             }
             val publicPath = publishToMediaStore(context, outputFile, mode, mediaIdentity)
             outputFile.delete()
+            DownloadNotificationHelper.showComplete(context, notifId, record.title)
             setRecord(record.id) {
                 copy(status = DownloadStatus.COMPLETE, progress = 1f, detail = "Download complete",
                     filePath = publicPath)
@@ -447,6 +462,14 @@ class DownlyViewModel : ViewModel() {
                 cancelledIds.remove(record.id) || latest?.status == DownloadStatus.CANCELLED ||
                     error is YoutubeDL.CanceledException -> DownloadStatus.CANCELLED
                 else -> DownloadStatus.FAILED
+            }
+            val notifId = record.id.hashCode()
+            appContext?.let { ctx ->
+                if (status == DownloadStatus.CANCELLED || status == DownloadStatus.PAUSED) {
+                    DownloadNotificationHelper.cancel(ctx, notifId)
+                } else {
+                    DownloadNotificationHelper.showFailed(ctx, notifId, record.title, friendlyError(error))
+                }
             }
             setRecord(record.id) {
                 copy(status = status, detail = if (status == DownloadStatus.PAUSED) "Paused · tap Resume to continue" else friendlyError(error))
@@ -636,9 +659,10 @@ class DownlyViewModel : ViewModel() {
     }
 
     fun pause(record: DownloadRecord) {
+        appContext?.let { DownloadWorkManager.cancel(it, record.id) }
+        appContext?.let { DownloadNotificationHelper.cancel(it, record.id.hashCode()) }
         val current = _state.value.history.firstOrNull { it.id == record.id } ?: return
         if (current.status == DownloadStatus.QUEUED) {
-            queuedTaskGenerations.remove(record.id)
             pausedIds.add(record.id)
             setRecord(record.id) { copy(status = DownloadStatus.PAUSED, detail = "Paused · tap Resume to continue") }
             return
@@ -671,9 +695,10 @@ class DownlyViewModel : ViewModel() {
     }
 
     fun cancel(record: DownloadRecord) {
+        appContext?.let { DownloadWorkManager.cancel(it, record.id) }
+        appContext?.let { DownloadNotificationHelper.cancel(it, record.id.hashCode()) }
         val current = _state.value.history.firstOrNull { it.id == record.id } ?: return
         if (current.status == DownloadStatus.QUEUED) {
-            queuedTaskGenerations.remove(record.id)
             setRecord(record.id) { copy(status = DownloadStatus.CANCELLED, detail = "Cancelled before start") }
             return
         }
@@ -688,9 +713,9 @@ class DownlyViewModel : ViewModel() {
     }
 
     fun removePaused(record: DownloadRecord) {
+        appContext?.let { DownloadNotificationHelper.cancel(it, record.id.hashCode()) }
         val current = _state.value.history.firstOrNull { it.id == record.id } ?: return
         if (current.status != DownloadStatus.PAUSED || current.detail == "Pausing…") return
-        queuedTaskGenerations.remove(record.id)
         pausedIds.remove(record.id)
         cancelledIds.remove(record.id)
         mutate {
@@ -742,15 +767,23 @@ class DownlyViewModel : ViewModel() {
 
     private fun persistHistory(context: Context, snapshot: List<DownloadRecord> = _state.value.history) {
         if (!historyLoaded) return
-        val encoded = snapshot.joinToString("\n") { item ->
-            listOf(item.id, encodeText(item.url), encodeText(item.title), item.status.name,
-                item.progress.toString(), encodeText(item.detail), item.filePath?.let(::encodeText) ?: "-",
-                item.timestamp.toString(), item.mode.name, encodeText(item.quality)).joinToString("|")
-        }
+        val encoded = encodeHistory(snapshot)
         persistenceWorker.execute {
             context.getSharedPreferences("downly-history", Context.MODE_PRIVATE).edit()
                 .putString("records", encoded).commit()
         }
+    }
+
+    private fun encodeHistory(snapshot: List<DownloadRecord>): String = snapshot.joinToString("\n") { item ->
+            listOf(item.id, encodeText(item.url), encodeText(item.title), item.status.name,
+                item.progress.toString(), encodeText(item.detail), item.filePath?.let(::encodeText) ?: "-",
+                item.timestamp.toString(), item.mode.name, encodeText(item.quality)).joinToString("|")
+        }
+
+    private fun reloadRecordFromWorker(id: String) {
+        val context = appContext ?: return
+        val updated = readHistory(context).firstOrNull { it.id == id } ?: return
+        mutate { copy(history = history.map { if (it.id == id) updated else it }) }
     }
 
     private fun setRecord(id: String, change: DownloadRecord.() -> DownloadRecord) {
@@ -779,9 +812,10 @@ class DownlyViewModel : ViewModel() {
     }
 
     override fun onCleared() {
+        unregisterWorkerListener?.invoke()
+        unregisterProgressListener?.invoke()
         networkCallback?.let { callback -> runCatching { connectivityManager?.unregisterNetworkCallback(callback) } }
         worker.shutdownNow()
-        downloadWorker.shutdownNow()
         persistenceWorker.shutdown()
     }
 }

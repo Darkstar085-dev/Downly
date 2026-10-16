@@ -415,3 +415,11 @@ fun requestIgnoreBatteryOptimizations(context: Context) {
     }
 }
 
+fun cleanYtDlpLine(line: String): String {
+    return line
+        .replace(Regex("^\\[download\\]\\s*"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
+
+

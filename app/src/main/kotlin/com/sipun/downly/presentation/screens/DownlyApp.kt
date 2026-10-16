@@ -8,6 +8,11 @@ import android.util.Size
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
@@ -236,10 +241,16 @@ fun DownlyApp(
                 )
             }
         ) { padding ->
-            when (state.tab) {
-                0 -> DownloadScreen(state, vm, Modifier.padding(padding))
-                1 -> ActivityScreen(state, vm, Modifier.padding(padding))
-                else -> SettingsScreen(state, vm, Modifier.padding(padding), onCheckForUpdates = { requestAnotherUpdateCheck = true })
+            AnimatedContent(
+                targetState = state.tab,
+                transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) },
+                label = "downly_screen_transition"
+            ) { tab ->
+                when (tab) {
+                    0 -> DownloadScreen(state, vm, Modifier.padding(padding))
+                    1 -> ActivityScreen(state, vm, Modifier.padding(padding))
+                    else -> SettingsScreen(state, vm, Modifier.padding(padding), onCheckForUpdates = { requestAnotherUpdateCheck = true })
+                }
             }
         }
 

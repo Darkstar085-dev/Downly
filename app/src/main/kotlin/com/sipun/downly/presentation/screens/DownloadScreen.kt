@@ -5,6 +5,9 @@ import com.sipun.downly.R
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -103,7 +106,7 @@ fun DownloadScreen(
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         item {
-            Card(shape = DownlyUiShapes.card, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+            Card(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = DownlyUiShapes.card, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                     if (state.preview != null && !linkInputExpanded) {
                         Card(
@@ -353,7 +356,7 @@ fun DownloadScreen(
                             }
                         }
                         MediaModeSelector(state, vm)
-                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), shape = DownlyUiShapes.card, border = downlyCardBorder()) {
+                        Card(modifier = Modifier.fillMaxWidth().animateContentSize(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), shape = DownlyUiShapes.card, border = downlyCardBorder()) {
                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Rounded.AutoAwesome, null, tint = colorResource(R.color.downly_accent))
@@ -502,34 +505,54 @@ private fun MediaModeSelector(state: ScreenState, vm: DownlyViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             val selectedVideo = state.mode == MediaMode.VIDEO
+            val videoContainer by animateColorAsState(
+                targetValue = if (selectedVideo) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                animationSpec = tween(180),
+                label = "video_mode_container"
+            )
+            val videoContentColor by animateColorAsState(
+                targetValue = if (selectedVideo) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                animationSpec = tween(180),
+                label = "video_mode_content"
+            )
             Row(
                 modifier = Modifier.weight(1f).height(56.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(if (selectedVideo) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+                    .background(videoContainer)
                     .clickable { vm.setMode(MediaMode.VIDEO) },
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Rounded.Movie, null, tint = if (selectedVideo) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.Movie, null, tint = videoContentColor, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.media_video), color = if (selectedVideo) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (selectedVideo) FontWeight.SemiBold else FontWeight.Medium)
+                Text(stringResource(R.string.media_video), color = videoContentColor, fontWeight = if (selectedVideo) FontWeight.SemiBold else FontWeight.Medium)
             }
             Box(
                 Modifier.padding(horizontal = 4.dp).width(1.dp).height(28.dp)
                     .background(MaterialTheme.colorScheme.outlineVariant)
             )
             val selectedAudio = state.mode == MediaMode.AUDIO
+            val audioContainer by animateColorAsState(
+                targetValue = if (selectedAudio) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                animationSpec = tween(180),
+                label = "audio_mode_container"
+            )
+            val audioContentColor by animateColorAsState(
+                targetValue = if (selectedAudio) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                animationSpec = tween(180),
+                label = "audio_mode_content"
+            )
             Row(
                 modifier = Modifier.weight(1f).height(56.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(if (selectedAudio) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+                    .background(audioContainer)
                     .clickable { vm.setMode(MediaMode.AUDIO) },
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Rounded.MusicNote, null, tint = if (selectedAudio) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.MusicNote, null, tint = audioContentColor, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.media_audio), color = if (selectedAudio) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (selectedAudio) FontWeight.SemiBold else FontWeight.Medium)
+                Text(stringResource(R.string.media_audio), color = audioContentColor, fontWeight = if (selectedAudio) FontWeight.SemiBold else FontWeight.Medium)
             }
         }
     }

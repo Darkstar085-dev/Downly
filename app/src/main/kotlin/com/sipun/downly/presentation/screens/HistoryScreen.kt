@@ -13,6 +13,7 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -225,11 +226,11 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
     val details by produceState(initialValue = MediaCardDetails(), key1 = record.filePath) {
         value = withContext(Dispatchers.IO) { resolveMediaDetails(context, record.filePath, audio) }
     }
-    Card(shape = DownlyUiShapes.card, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = downlyCardBorder()) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Card(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = DownlyUiShapes.card, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = downlyCardBorder()) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 Box(
-                    Modifier.size(width = 116.dp, height = 104.dp).clip(RoundedCornerShape(14.dp))
+                    Modifier.size(width = 96.dp, height = 84.dp).clip(RoundedCornerShape(16.dp))
                         .background(if (audio) androidx.compose.ui.graphics.Color(0xFFEBDDFF) else MaterialTheme.colorScheme.surfaceContainer),
                     contentAlignment = Alignment.Center
                 ) {
@@ -253,17 +254,24 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
                     }
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.AutoMirrored.Rounded.InsertDriveFile, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                Text(details.fileType.ifBlank { if (audio) stringResource(R.string.media_mp3) else stringResource(R.string.media_video) }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.width(4.dp))
-                Icon(Icons.Rounded.Storage, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                Text(details.size, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.width(4.dp))
-                Icon(Icons.Rounded.CalendarMonth, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(record.timestamp)),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.AutoMirrored.Rounded.InsertDriveFile, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Text(details.fileType.ifBlank { if (audio) stringResource(R.string.media_mp3) else stringResource(R.string.media_video) }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Rounded.Storage, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Text(details.size, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Rounded.CalendarMonth, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Text(
+                        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(record.timestamp)),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
             if (record.status == DownloadStatus.QUEUED || record.status == DownloadStatus.DOWNLOADING) {
                 LinearProgressIndicator(progress = { record.progress }, modifier = Modifier.fillMaxWidth(), color = colorResource(R.color.downly_accent))

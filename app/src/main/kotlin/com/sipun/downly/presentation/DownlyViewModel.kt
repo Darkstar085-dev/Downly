@@ -39,6 +39,8 @@ import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,32 +49,34 @@ private object RuntimeLibraryDirectoryConfiguration {
     private var ffmpegDirectory: String? = null
     private var aria2cDirectory: String? = null
     private var youtubeDlDirectory: String? = null
+    private val lock = ReentrantLock()
 
-    @Synchronized
     fun configure(directory: File) {
-        val path = directory.canonicalPath
+        lock.withLock {
+            val path = directory.canonicalPath
 
-        check(ffmpegDirectory == null || ffmpegDirectory == path) {
-            "Runtime libraries changed during this process. Restart Downly to apply the update."
-        }
-        check(aria2cDirectory == null || aria2cDirectory == path) {
-            "Runtime libraries changed during this process. Restart Downly to apply the update."
-        }
-        check(youtubeDlDirectory == null || youtubeDlDirectory == path) {
-            "Runtime libraries changed during this process. Restart Downly to apply the update."
-        }
+            check(ffmpegDirectory == null || ffmpegDirectory == path) {
+                "Runtime libraries changed during this process. Restart Downly to apply the update."
+            }
+            check(aria2cDirectory == null || aria2cDirectory == path) {
+                "Runtime libraries changed during this process. Restart Downly to apply the update."
+            }
+            check(youtubeDlDirectory == null || youtubeDlDirectory == path) {
+                "Runtime libraries changed during this process. Restart Downly to apply the update."
+            }
 
-        if (ffmpegDirectory == null) {
-            com.sipun.ffmpeg.FFmpeg.setRuntimeArchiveDirectory(directory)
-            ffmpegDirectory = path
-        }
-        if (aria2cDirectory == null) {
-            com.sipun.aria2c.Aria2c.setRuntimeArchiveDirectory(directory)
-            aria2cDirectory = path
-        }
-        if (youtubeDlDirectory == null) {
-            YoutubeDL.setRuntimeArchiveDirectory(directory)
-            youtubeDlDirectory = path
+            if (ffmpegDirectory == null) {
+                com.sipun.ffmpeg.FFmpeg.setRuntimeArchiveDirectory(directory)
+                ffmpegDirectory = path
+            }
+            if (aria2cDirectory == null) {
+                com.sipun.aria2c.Aria2c.setRuntimeArchiveDirectory(directory)
+                aria2cDirectory = path
+            }
+            if (youtubeDlDirectory == null) {
+                YoutubeDL.setRuntimeArchiveDirectory(directory)
+                youtubeDlDirectory = path
+            }
         }
     }
 }
@@ -88,7 +92,7 @@ class DownlyViewModel : ViewModel() {
 
     private val worker = Executors.newSingleThreadExecutor()
     private val downloadWorker = Executors.newSingleThreadExecutor()
-    private val queueLock = Any()
+    private val queueLock = ReentrantLock()
     private val pendingDownloads = java.util.ArrayDeque<QueuedDownloadTask>()
     private var queueRunnerScheduled = false
     private val cancelledIds = ConcurrentHashMap.newKeySet<String>()
@@ -100,7 +104,7 @@ class DownlyViewModel : ViewModel() {
     private val _state = MutableStateFlow(ScreenState())
     val state: StateFlow<ScreenState> = _state.asStateFlow()
     private var appContext: Context? = null
-    private val initializationLock = Any()
+    private val initializationLock = ReentrantLock()
     @Volatile private var initializationInFlight = false
     @Volatile private var initializationComplete = false
     @Volatile private var historyLoaded = false
@@ -154,7 +158,7 @@ class DownlyViewModel : ViewModel() {
     }
 
     fun initialize() {
-        synchronized(initializationLock) {
+        initializationLock.withLock {
             if (initializationComplete || initializationInFlight || _state.value.initialized) return
             initializationInFlight = true
         }
@@ -162,7 +166,7 @@ class DownlyViewModel : ViewModel() {
         worker.execute {
             val context = appContext
             if (context == null) {
-                synchronized(initializationLock) { initializationInFlight = false }
+                initializationLock.withLock { initializationInFlight = false }
                 return@execute
             }
             try {
@@ -238,13 +242,13 @@ class DownlyViewModel : ViewModel() {
                 com.sipun.ffmpeg.FFmpeg.init(context)
                 runCatching { com.sipun.aria2c.Aria2c.init(context) }
                 YoutubeDL.init(context)
-                synchronized(initializationLock) {
+                initializationLock.withLock {
                     initializationComplete = true
                     initializationInFlight = false
                 }
                 mutate { copy(initialized = true, busy = false, libraryProgress = 1f, message = "Downloader ready") }
             } catch (error: Exception) {
-                synchronized(initializationLock) {
+                initializationLock.withLock {
                     initializationInFlight = false
                     initializationComplete = false
                 }
@@ -334,7 +338,7 @@ class DownlyViewModel : ViewModel() {
     private fun scheduleDownload(record: DownloadRecord, mode: MediaMode, quality: String, connectionType: String) {
         val generation = nextTaskGeneration.incrementAndGet()
         val task = QueuedDownloadTask(record, mode, quality, connectionType, generation)
-        val shouldStartRunner = synchronized(queueLock) {
+        val shouldStartRunner = queueLock.withLock {
             queuedTaskGenerations[record.id] = generation
             pendingDownloads.removeIf { it.record.id == record.id }
             pendingDownloads.addLast(task)
@@ -350,7 +354,7 @@ class DownlyViewModel : ViewModel() {
 
     private fun drainDownloadQueue() {
         while (true) {
-            val task = synchronized(queueLock) {
+            val task = queueLock.withLock {
                 val next = pendingDownloads.pollFirst()
                 if (next == null) queueRunnerScheduled = false
                 next

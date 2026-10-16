@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.CalendarMonth
@@ -42,6 +43,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -82,6 +84,7 @@ import com.sipun.downly.presentation.DownlyViewModel
 import com.sipun.downly.presentation.theme.DownlyUiShapes
 import com.sipun.downly.presentation.theme.downlyCardBorder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
@@ -174,7 +177,16 @@ fun DownlyApp(
     val state by vm.state.collectAsState()
     val context = LocalContext.current
     var requestAnotherUpdateCheck by remember { mutableStateOf(false) }
+    var showBatteryPrompt by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.attach(context) }
+    LaunchedEffect(state.initialized) {
+        if (state.initialized) {
+            delay(4500)
+            if (!com.sipun.downly.utils.isIgnoringBatteryOptimizations(context)) {
+                showBatteryPrompt = true
+            }
+        }
+    }
     BackHandler(enabled = state.tab != 0) { vm.setTab(0) }
 
     val darkTheme = when (state.themeMode) {
@@ -266,6 +278,29 @@ fun DownlyApp(
             installRequested = installUpdateRequested,
             onInstallRequestConsumed = onInstallUpdateRequestConsumed,
         )
+
+        if (showBatteryPrompt) {
+            com.sipun.downly.ui.components.ExpressiveBottomSheetDialog(
+                onDismiss = { showBatteryPrompt = false },
+                title = stringResource(R.string.battery_optimization_dialog_title),
+                message = stringResource(R.string.battery_optimization_dialog_message),
+                confirmText = stringResource(R.string.battery_optimization_dialog_action),
+                onConfirm = {
+                    showBatteryPrompt = false
+                    com.sipun.downly.utils.requestIgnoreBatteryOptimizations(context)
+                },
+                dismissText = stringResource(R.string.action_cancel),
+                onDismissClick = { showBatteryPrompt = false },
+                icon = {
+                    Icon(
+                        Icons.Rounded.Bolt,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            )
+        }
 
         state.duplicatePrompt?.let { prompt ->
             val targetFolder = if (prompt.mode == MediaMode.AUDIO) "Music/Downly" else "Movies/Downly"

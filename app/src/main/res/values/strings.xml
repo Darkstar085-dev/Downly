@@ -136,4 +136,10 @@
     <string name="update_megabytes">MB</string>
     <string name="update_gigabytes">GB</string>
     <string name="update_size_unit">%1$.1f %2$s</string>
+    <string name="battery_optimization_title">Background running &amp; battery</string>
+    <string name="battery_optimization_description">Disable battery restrictions for uninterrupted downloads</string>
+    <string name="battery_optimization_dialog_title">Disable Battery Restrictions</string>
+    <string name="battery_optimization_dialog_message">To prevent Android from killing or pausing downloads when the app is minimized or the screen is off, please allow ignoring battery optimizations.</string>
+    <string name="battery_optimization_dialog_action">Disable restrictions</string>
+    <string name="battery_optimization_disabled">Battery restrictions are disabled</string>
 </resources>

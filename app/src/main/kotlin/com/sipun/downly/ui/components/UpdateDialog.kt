@@ -51,23 +51,28 @@ fun UpdateDialog(
     onInstall: () -> Unit = {},
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        modifier = Modifier.downlyDialogBorder(),
-        title = {
-            Text(
-                stringResource(if (isDownloaded) R.string.update_ready else R.string.update_title),
-                fontWeight = FontWeight.Bold,
-                fontSize = 22.sp,
+    ExpressiveBottomSheetDialog(
+        onDismiss = onDismiss,
+        title = stringResource(if (isDownloaded) R.string.update_ready else R.string.update_title),
+        message = stringResource(R.string.update_version_available, update.version),
+        confirmText = when {
+            isDownloaded -> stringResource(R.string.update_install)
+            isDownloading -> stringResource(R.string.update_downloading)
+            else -> stringResource(R.string.update_download)
+        },
+        onConfirm = if (isDownloaded) onInstall else onDownload,
+        dismissText = stringResource(R.string.update_later),
+        onDismissClick = onDismiss,
+        icon = {
+            Icon(
+                Icons.Default.NewReleases,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp)
             )
         },
-        text = {
+        content = {
             Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
-                Text(
-                    stringResource(R.string.update_version_available, update.version),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp,
-                )
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = DownlyUiShapes.nestedCard,
@@ -117,49 +122,7 @@ fun UpdateDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
-            ) {
-                OutlinedButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .weight(0.85f)
-                        .height(44.dp),
-                    shape = DownlyUiShapes.nestedCard,
-                ) {
-                    Text(stringResource(R.string.update_later))
-                }
-                Button(
-                    onClick = if (isDownloaded) onInstall else onDownload,
-                    enabled = !isDownloading,
-                    modifier = Modifier
-                        .weight(1.25f)
-                        .height(44.dp),
-                    shape = DownlyUiShapes.nestedCard,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                ) {
-                    Icon(Icons.Default.Download, null, Modifier.size(17.dp))
-                    Spacer(Modifier.size(6.dp))
-                    Text(
-                        when {
-                            isDownloaded -> stringResource(R.string.update_install)
-                            isDownloading -> stringResource(R.string.update_downloading)
-                            else -> stringResource(R.string.update_download)
-                        },
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-        },
-        shape = DownlyUiShapes.dialog,
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
+        }
     )
 }
 

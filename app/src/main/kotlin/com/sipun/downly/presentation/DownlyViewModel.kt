@@ -75,7 +75,19 @@ private object RuntimeLibraryDirectoryConfiguration {
 }
 
 class DownlyViewModel : ViewModel() {
+    private data class QueuedDownloadTask(
+        val record: DownloadRecord,
+        val mode: MediaMode,
+        val quality: String,
+        val connectionType: String,
+        val generation: Long
+    )
+
     private val worker = Executors.newSingleThreadExecutor()
+    private val downloadWorker = Executors.newSingleThreadExecutor()
+    private val queueLock = Any()
+    private val pendingDownloads = java.util.ArrayDeque<QueuedDownloadTask>()
+    private var queueRunnerScheduled = false
     private val cancelledIds = ConcurrentHashMap.newKeySet<String>()
     private val queuedTaskGenerations = ConcurrentHashMap<String, Long>()
     private val nextTaskGeneration = AtomicLong()
@@ -312,17 +324,38 @@ class DownlyViewModel : ViewModel() {
             mode = current.mode,
             quality = selectedQuality
         )
-        mutate { copy(history = listOf(record) + history, tab = 1, message = "Added to download activity") }
+        mutate { copy(history = listOf(record) + history, url = "", preview = null, tab = 0, message = "Added to download queue") }
         scheduleDownload(record, current.mode, selectedQuality, current.connectionType)
     }
 
     private fun scheduleDownload(record: DownloadRecord, mode: MediaMode, quality: String, connectionType: String) {
         val generation = nextTaskGeneration.incrementAndGet()
-        queuedTaskGenerations[record.id] = generation
-        worker.execute {
-            if (!queuedTaskGenerations.remove(record.id, generation)) return@execute
-            if (cancelledIds.remove(record.id)) return@execute
-            executeDownload(record, mode, quality, connectionType)
+        val task = QueuedDownloadTask(record, mode, quality, connectionType, generation)
+        val shouldStartRunner = synchronized(queueLock) {
+            queuedTaskGenerations[record.id] = generation
+            pendingDownloads.removeIf { it.record.id == record.id }
+            pendingDownloads.addLast(task)
+            if (queueRunnerScheduled) {
+                false
+            } else {
+                queueRunnerScheduled = true
+                true
+            }
+        }
+        if (shouldStartRunner) downloadWorker.execute { drainDownloadQueue() }
+    }
+
+    private fun drainDownloadQueue() {
+        while (true) {
+            val task = synchronized(queueLock) {
+                val next = pendingDownloads.pollFirst()
+                if (next == null) queueRunnerScheduled = false
+                next
+            } ?: return
+
+            if (!queuedTaskGenerations.remove(task.record.id, task.generation)) continue
+            if (cancelledIds.remove(task.record.id)) continue
+            executeDownload(task.record, task.mode, task.quality, task.connectionType)
         }
     }
 
@@ -645,6 +678,25 @@ class DownlyViewModel : ViewModel() {
         }
     }
 
+    fun removePaused(record: DownloadRecord) {
+        val current = _state.value.history.firstOrNull { it.id == record.id } ?: return
+        if (current.status != DownloadStatus.PAUSED || current.detail == "Pausing…") return
+        queuedTaskGenerations.remove(record.id)
+        pausedIds.remove(record.id)
+        cancelledIds.remove(record.id)
+        mutate {
+            copy(
+                history = history.filterNot { it.id == record.id },
+                message = "Paused download removed"
+            )
+        }
+        val context = appContext ?: return
+        worker.execute {
+            val root = File(context.getExternalFilesDir(null) ?: context.filesDir, "Downly")
+            File(root, record.id).deleteRecursively()
+        }
+    }
+
     fun delete(record: DownloadRecord) {
         mutate { copy(history = history.filterNot { it.id == record.id }) }
     }
@@ -720,6 +772,7 @@ class DownlyViewModel : ViewModel() {
     override fun onCleared() {
         networkCallback?.let { callback -> runCatching { connectivityManager?.unregisterNetworkCallback(callback) } }
         worker.shutdownNow()
+        downloadWorker.shutdownNow()
         persistenceWorker.shutdown()
     }
 }

@@ -214,6 +214,7 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
     var showCompletedMessage by remember(record.id, record.status) {
         mutableStateOf(record.status == DownloadStatus.COMPLETE)
     }
+    var showRemovePausedDialog by remember(record.id) { mutableStateOf(false) }
     LaunchedEffect(record.id, record.status) {
         if (record.status == DownloadStatus.COMPLETE) {
             showCompletedMessage = true
@@ -303,17 +304,45 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
                     }
                 }
                 if (record.status == DownloadStatus.FAILED || record.status == DownloadStatus.PAUSED) {
-                    Button(
-                        onClick = { if (record.status == DownloadStatus.FAILED) vm.retry(record) else vm.resume(record) },
+                    Row(
                         modifier = Modifier.align(Alignment.End),
-                        shape = RoundedCornerShape(50),
-                        colors = ButtonDefaults.buttonColors(containerColor = colorResource(R.color.downly_accent))
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(if (record.status == DownloadStatus.FAILED) Icons.Rounded.Refresh else Icons.Rounded.PlayArrow,
-                            contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(if (record.status == DownloadStatus.FAILED) R.string.retry_download else R.string.resume_download))
+                        if (record.status == DownloadStatus.PAUSED && record.detail != "Pausing…") {
+                            TextButton(onClick = { showRemovePausedDialog = true }) {
+                                Icon(Icons.Rounded.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(5.dp))
+                                Text("Remove")
+                            }
+                        }
+                        Button(
+                            onClick = { if (record.status == DownloadStatus.FAILED) vm.retry(record) else vm.resume(record) },
+                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.buttonColors(containerColor = colorResource(R.color.downly_accent))
+                        ) {
+                            Icon(if (record.status == DownloadStatus.FAILED) Icons.Rounded.Refresh else Icons.Rounded.PlayArrow,
+                                contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(if (record.status == DownloadStatus.FAILED) R.string.retry_download else R.string.resume_download))
+                        }
                     }
+                }
+                if (showRemovePausedDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showRemovePausedDialog = false },
+                        title = { Text("Remove paused download?") },
+                        text = { Text("This will remove the paused item and delete its temporary download files, if any. This cannot be undone.") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showRemovePausedDialog = false
+                                vm.removePaused(record)
+                            }) { Text("Remove") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showRemovePausedDialog = false }) { Text("Cancel") }
+                        }
+                    )
                 }
             }
             if (record.status == DownloadStatus.COMPLETE && record.filePath != null) {

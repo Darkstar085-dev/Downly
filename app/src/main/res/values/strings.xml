@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">Downly</string>
     <string name="home_tagline">Your personal media saver</string>
-    <string name="history_title">History</string>
+    <string name="history_title">Downloads</string>
     <string name="history_subtitle">Your downloads, all in one place</string>
     <string name="settings_title">Settings</string>
     <string name="settings_subtitle">Make Downly work for you</string>

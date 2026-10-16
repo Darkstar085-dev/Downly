@@ -43,6 +43,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -190,10 +191,13 @@ fun DownlyApp(
     LaunchedEffect(state.initialized) {
         if (state.initialized) {
             delay(4500)
-            if (!com.sipun.downly.utils.isIgnoringBatteryOptimizations(context)) {
+            if (state.duplicatePrompt == null && !com.sipun.downly.utils.isIgnoringBatteryOptimizations(context)) {
                 showBatteryPrompt = true
             }
         }
+    }
+    LaunchedEffect(state.duplicatePrompt?.recordId) {
+        if (state.duplicatePrompt != null) showBatteryPrompt = false
     }
     BackHandler(enabled = state.tab != 0) { vm.setTab(0) }
 
@@ -323,7 +327,9 @@ fun DownlyApp(
                 }
             }
             Dialog(
-                onDismissRequest = { vm.resolveDuplicate(replaceExisting = false) },
+                onDismissRequest = {
+                    if (!state.duplicateReplacementInProgress) vm.resolveDuplicate(replaceExisting = false)
+                },
                 properties = DialogProperties(usePlatformDefaultWidth = false)
             ) {
                 Surface(
@@ -444,7 +450,19 @@ fun DownlyApp(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        Row(
+                        if (state.duplicateReplacementInProgress) {
+                            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                                LinearProgressIndicator(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    "Replacing existing file…",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        } else Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically

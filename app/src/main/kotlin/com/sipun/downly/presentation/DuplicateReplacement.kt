@@ -1,5 +1,7 @@
 package com.sipun.downly.presentation
 
+import com.sipun.downly.data.DownloadRecord
+
 internal fun replaceWithRollback(
     backup: () -> Unit,
     replace: () -> Unit,
@@ -16,4 +18,12 @@ internal fun replaceWithRollback(
         }
         throw error
     }
+}
+
+internal fun reconcileReplacedHistory(
+    history: List<DownloadRecord>,
+    replacement: DownloadRecord,
+    replacedPath: String
+): List<DownloadRecord> = history.filterNot {
+    it.id != replacement.id && it.filePath == replacedPath
 }

@@ -102,12 +102,12 @@ fun DownloadScreen(
     }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             Card(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = DownlyUiShapes.card, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.preview != null && !linkInputExpanded) {
                         Card(
                             modifier = Modifier.fillMaxWidth().clickable { linkInputExpanded = true },
@@ -150,7 +150,7 @@ fun DownloadScreen(
                     }
                     OutlinedTextField(
                         value = state.url, onValueChange = vm::setUrl, modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text(stringResource(R.string.url_placeholder)) }, minLines = 2, shape = DownlyUiShapes.card,
+                        placeholder = { Text(stringResource(R.string.url_placeholder)) }, minLines = 1, shape = DownlyUiShapes.card,
                         trailingIcon = {
                             if (state.url.isNotBlank()) {
                                 IconButton(onClick = { vm.setUrl("") }) {
@@ -169,7 +169,7 @@ fun DownloadScreen(
                     )
                     if (state.preview == null) MediaModeSelector(state, vm)
                     Button(
-                        onClick = vm::fetchInfo, modifier = Modifier.fillMaxWidth().height(48.dp),
+                        onClick = vm::fetchInfo, modifier = Modifier.fillMaxWidth().height(44.dp),
                         enabled = !state.busy && state.url.isNotBlank(), shape = DownlyUiShapes.card,
                         colors = ButtonDefaults.buttonColors(
                             disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -332,9 +332,9 @@ fun DownloadScreen(
         item {
             state.preview?.let { preview ->
                 Card(shape = DownlyUiShapes.card, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(width = 112.dp, height = 76.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
+                            Box(Modifier.size(width = 96.dp, height = 64.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
                                 contentAlignment = Alignment.Center) {
                                 Icon(if (state.mode == MediaMode.VIDEO) Icons.Rounded.Movie else Icons.Rounded.MusicNote, null,
                                     tint = colorResource(R.color.downly_accent), modifier = Modifier.size(25.dp))
@@ -417,7 +417,7 @@ fun DownloadScreen(
                                             if (option.quality == state.recommendedQuality) colorResource(R.color.downly_accent) else MaterialTheme.colorScheme.outlineVariant
                                         )
                                     ) {
-                                        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Column(Modifier.weight(1f)) {
                                                 Text(option.quality + if (option.quality == state.recommendedQuality) " · " + stringResource(R.string.recommended) else "", fontWeight = FontWeight.Bold)
                                                 Text(option.estimatedBytes?.let { if (option.sizeIsApproximate) stringResource(R.string.file_size_about, formatBytes(it)) else formatBytes(it) } ?: stringResource(R.string.file_size_varies), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -425,7 +425,7 @@ fun DownloadScreen(
                                             OutlinedButton(
                                                 onClick = { vm.startDownload("video:" + option.formatSelector) },
                                                 shape = DownlyUiShapes.card,
-                                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
+                                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                                             ) { Text(stringResource(R.string.download_action)) }
                                         }
                                     }
@@ -453,7 +453,7 @@ fun DownloadScreen(
                                         )
                                     ) {
                                         Row(
-                                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Box(
@@ -476,7 +476,7 @@ fun DownloadScreen(
                                             OutlinedButton(
                                                 onClick = { vm.startDownload("audio:${option.formatId}") },
                                                 shape = DownlyUiShapes.card,
-                                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+                                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)
                                             ) { Text(stringResource(R.string.download_action)) }
                                         }
                                     }

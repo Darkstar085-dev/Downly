@@ -8,8 +8,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.os.Build
-import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.foundation.Image
@@ -25,14 +23,12 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.VideoFile
 import androidx.compose.material3.*
@@ -53,8 +49,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import com.sipun.downly.data.DownloadRecord
 import com.sipun.downly.data.DownloadStatus
+import com.sipun.downly.data.DuplicateDownloadPrompt
 import com.sipun.downly.data.ScreenState
 import com.sipun.downly.presentation.DownlyViewModel
+import com.sipun.downly.presentation.duplicateChoiceFor
 import com.sipun.downly.utils.downloadTotalSize
 import com.sipun.downly.presentation.theme.DownlyUiShapes
 import com.sipun.downly.presentation.theme.downlyCardBorder
@@ -66,10 +64,7 @@ private enum class HistoryFilter { ALL, VIDEO, AUDIO }
 
 @Composable
 fun ActivityScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier) {
-    var search by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(HistoryFilter.ALL) }
-    val completed = state.history.count { it.status == DownloadStatus.COMPLETE }
-    val active = state.history.count { it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.QUEUED }
     val visibleRecords = state.history.filter { record ->
         val audio = isAudioRecord(record)
         val matchesFilter = when (filter) {
@@ -77,23 +72,14 @@ fun ActivityScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier) 
             HistoryFilter.VIDEO -> !audio
             HistoryFilter.AUDIO -> audio
         }
-        matchesFilter && (search.isBlank() || record.title.contains(search, true) ||
-            record.filePath.orEmpty().contains(search, true) || record.detail.contains(search, true))
+        matchesFilter
     }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item {
-            OutlinedTextField(
-                value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth(),
-                singleLine = true, shape = RoundedCornerShape(50),
-                placeholder = { Text(stringResource(R.string.search_downloads)) },
-                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) }
-            )
-        }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 HistoryFilterChip("All (" + state.history.size + ")", filter == HistoryFilter.ALL, Modifier.weight(1f)) { filter = HistoryFilter.ALL }
@@ -146,7 +132,7 @@ fun ActivityScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier) 
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            if (state.history.isEmpty()) "Videos and audio you download will show up here." else "Try a different search or switch the media filter.",
+                            if (state.history.isEmpty()) "Videos and audio you download will show up here." else "Try a different media filter.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -162,7 +148,7 @@ fun ActivityScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier) 
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(7.dp)
                                 ) {
-                                    Icon(Icons.Rounded.Search, contentDescription = null, tint = colorResource(R.color.downly_accent), modifier = Modifier.size(17.dp))
+                                    Icon(Icons.Rounded.Download, contentDescription = null, tint = colorResource(R.color.downly_accent), modifier = Modifier.size(17.dp))
                                     Text(stringResource(R.string.paste_link_to_start), style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
@@ -172,10 +158,9 @@ fun ActivityScreen(state: ScreenState, vm: DownlyViewModel, modifier: Modifier) 
                 }
             }
         }
-        items(visibleRecords, key = { it.id }) { record -> DownloadCard(record, vm) }
+        items(visibleRecords, key = { it.id }) { record -> DownloadCard(record, vm, duplicateChoiceFor(record, state.duplicatePrompt)) }
     }
 }
-
 @Composable
 private fun HistoryFilterChip(
     label: String,
@@ -208,14 +193,13 @@ private fun HistoryFilterChip(
 }
 
 @Composable
-fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
+fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel, duplicatePrompt: DuplicateDownloadPrompt? = null) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val audio = isAudioRecord(record)
     val fileName = record.filePath?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: record.title
     var showCompletedMessage by remember(record.id, record.status) {
         mutableStateOf(record.status == DownloadStatus.COMPLETE)
     }
-    var showRemovePausedDialog by remember(record.id) { mutableStateOf(false) }
     LaunchedEffect(record.id, record.status) {
         if (record.status == DownloadStatus.COMPLETE) {
             showCompletedMessage = true
@@ -229,10 +213,10 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
         value = withContext(Dispatchers.IO) { resolveMediaDetails(context, record.filePath, audio) }
     }
     Card(modifier = Modifier.fillMaxWidth().animateContentSize(), shape = DownlyUiShapes.card, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = downlyCardBorder()) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(
-                    Modifier.size(width = 96.dp, height = 84.dp).clip(RoundedCornerShape(16.dp))
+                    Modifier.size(width = 92.dp, height = 76.dp).clip(RoundedCornerShape(14.dp))
                         .background(if (audio) androidx.compose.ui.graphics.Color(0xFFEBDDFF) else MaterialTheme.colorScheme.surfaceContainer),
                     contentAlignment = Alignment.Center
                 ) {
@@ -243,12 +227,22 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
                         Icon(if (audio) Icons.Rounded.MusicNote else Icons.Rounded.VideoFile,
                             contentDescription = if (audio) stringResource(R.string.audio_file) else stringResource(R.string.video_file),
                             tint = if (audio) androidx.compose.ui.graphics.Color(0xFF8754B4) else colorResource(R.color.downly_accent),
-                            modifier = Modifier.size(42.dp))
+                            modifier = Modifier.size(38.dp))
                     }
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(fileName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium,
-                        maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    Text(fileName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Icon(Icons.AutoMirrored.Rounded.InsertDriveFile, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                        Text(details.fileType.ifBlank { if (audio) stringResource(R.string.media_mp3) else stringResource(R.string.media_video) }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                        Icon(Icons.Rounded.Storage, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                        Text(details.size.takeIf { it != "—" } ?: downloadTotalSize(record.detail) ?: "—", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Icon(Icons.Rounded.CalendarMonth, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                        Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(record.timestamp)), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
                 if (record.status == DownloadStatus.QUEUED || record.status == DownloadStatus.DOWNLOADING) {
                     IconButton(onClick = { vm.cancel(record) }) {
@@ -256,30 +250,32 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
                     }
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.AutoMirrored.Rounded.InsertDriveFile, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                    Text(details.fileType.ifBlank { if (audio) stringResource(R.string.media_mp3) else stringResource(R.string.media_video) }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Rounded.Storage, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                    Text(
-                        details.size.takeIf { it != "—" } ?: downloadTotalSize(record.detail) ?: "—",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+            if (duplicatePrompt != null) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.45f))
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Duplicate file found", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onTertiaryContainer, fontWeight = FontWeight.SemiBold)
+                        Text("Choose whether to keep the existing file or replace it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { vm.resolveDuplicate(replaceExisting = false) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(50),
+                                contentPadding = PaddingValues(vertical = 9.dp)
+                            ) { Text(stringResource(R.string.keep_existing), maxLines = 1) }
+                            Button(
+                                onClick = { vm.resolveDuplicate(replaceExisting = true) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(50),
+                                contentPadding = PaddingValues(vertical = 9.dp)
+                            ) { Icon(Icons.Rounded.Refresh, null, Modifier.size(17.dp)); Spacer(Modifier.width(5.dp)); Text(stringResource(R.string.replace_download), maxLines = 1) }
+                        }
+                    }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Rounded.CalendarMonth, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                    Text(
-                        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(record.timestamp)),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            if (record.status == DownloadStatus.QUEUED || record.status == DownloadStatus.DOWNLOADING) {
+            } else if (record.status == DownloadStatus.QUEUED || record.status == DownloadStatus.DOWNLOADING) {
                 LinearProgressIndicator(progress = { record.progress }, modifier = Modifier.fillMaxWidth(), color = colorResource(R.color.downly_accent))
                 Text(record.progress.times(100).toInt().toString() + "% · " + record.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(
@@ -310,20 +306,14 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
                 }
                 if (record.status == DownloadStatus.FAILED || record.status == DownloadStatus.PAUSED) {
                     Row(
-                        modifier = Modifier.align(Alignment.End),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (record.status == DownloadStatus.PAUSED && record.detail != "Pausing…") {
-                            TextButton(onClick = { showRemovePausedDialog = true }) {
-                                Icon(Icons.Rounded.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(5.dp))
-                                Text("Remove")
-                            }
-                        }
                         Button(
                             onClick = { if (record.status == DownloadStatus.FAILED) vm.retry(record) else vm.resume(record) },
                             shape = RoundedCornerShape(50),
+                            modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = colorResource(R.color.downly_accent))
                         ) {
                             Icon(if (record.status == DownloadStatus.FAILED) Icons.Rounded.Refresh else Icons.Rounded.PlayArrow,
@@ -333,40 +323,15 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
                         }
                     }
                 }
-                if (showRemovePausedDialog) {
-                    AlertDialog(
-                        onDismissRequest = { showRemovePausedDialog = false },
-                        title = { Text("Remove paused download?") },
-                        text = { Text("This will remove the paused item and delete its temporary download files, if any. This cannot be undone.") },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                showRemovePausedDialog = false
-                                vm.removePaused(record)
-                            }) { Text("Remove") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showRemovePausedDialog = false }) { Text("Cancel") }
-                        }
-                    )
-                }
             }
             if (record.status == DownloadStatus.COMPLETE && record.filePath != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = { showInFolder(context, record.filePath, audio) },
-                        modifier = Modifier.weight(1f), shape = RoundedCornerShape(50),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)) {
-                        Icon(Icons.Rounded.Folder, null, modifier = Modifier.size(19.dp))
-                        Spacer(Modifier.width(7.dp))
-                        Text(stringResource(R.string.show_in_folder), maxLines = 1)
-                    }
-                    Button(onClick = { playMedia(context, record.filePath, audio) },
-                        modifier = Modifier.weight(1f), shape = RoundedCornerShape(50),
-                        colors = ButtonDefaults.buttonColors(containerColor = colorResource(R.color.downly_accent)),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)) {
-                        Icon(Icons.Rounded.PlayArrow, null, modifier = Modifier.size(21.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text(stringResource(R.string.play_action), maxLines = 1)
-                    }
+                Button(onClick = { playMedia(context, record.filePath, audio) },
+                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(containerColor = colorResource(R.color.downly_accent)),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)) {
+                    Icon(Icons.Rounded.PlayArrow, null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text(stringResource(R.string.play_action), maxLines = 1)
                 }
             }
         }
@@ -440,27 +405,5 @@ private fun playMedia(context: Context, path: String, audio: Boolean) {
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     runCatching { context.startActivity(intent) }.onFailure {
         Toast.makeText(context, context.getString(R.string.no_app_to_play_file), Toast.LENGTH_LONG).show()
-    }
-}
-
-private fun showInFolder(context: Context, path: String, audio: Boolean) {
-    val relative = path.substringBeforeLast('/', if (audio) "Music/Downly" else "Movies/Downly")
-    val folderUri = Uri.parse("content://com.android.externalstorage.documents/document/" + Uri.encode("primary:" + relative))
-    val viewIntent = Intent(Intent.ACTION_VIEW).setDataAndType(folderUri, DocumentsContract.Document.MIME_TYPE_DIR)
-        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    runCatching {
-        if (viewIntent.resolveActivity(context.packageManager) != null) {
-            runCatching { context.startActivity(viewIntent) }.getOrElse {
-                val picker = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) picker.putExtra(DocumentsContract.EXTRA_INITIAL_URI, folderUri)
-                context.startActivity(picker)
-            }
-        } else {
-            val picker = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) picker.putExtra(DocumentsContract.EXTRA_INITIAL_URI, folderUri)
-            context.startActivity(picker)
-        }
-    }.onFailure {
-        Toast.makeText(context, context.getString(R.string.saved_to_open_file_manager, relative), Toast.LENGTH_LONG).show()
     }
 }

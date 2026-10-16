@@ -122,10 +122,12 @@ class DownlyViewModel : ViewModel() {
             val savedTheme = settings.getString("theme_mode", "System") ?: "System"
             val dynamicColor = settings.getBoolean("dynamic_color", false)
             val restoredHistory = readHistory(appContext!!)
+            val restoredDuplicatePrompt = readDuplicatePrompt(appContext!!)
             _state.value = _state.value.copy(
                 themeMode = savedTheme,
                 dynamicColor = dynamicColor,
-                history = restoredHistory
+                history = restoredHistory,
+                duplicatePrompt = restoredDuplicatePrompt
             )
             historyLoaded = true
             connectivityManager = appContext!!.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -445,6 +447,14 @@ class DownlyViewModel : ViewModel() {
                         message = "This file is already downloaded. Choose whether to replace it."
                     )
                 }
+                persistDuplicatePrompt(context, DuplicateDownloadPrompt(
+                    recordId = record.id,
+                    sourcePath = outputFile.absolutePath,
+                    existingUri = duplicate.first.toString(),
+                    existingPath = duplicate.second,
+                    mode = mode,
+                    fileName = outputFile.name
+                ))
                 if (mediaIdentity != null) saveMediaIdMapping(context, mediaIdentity, duplicate.first)
                 setRecord(record.id) { copy(detail = "Waiting for duplicate choice…") }
                 return
@@ -566,24 +576,43 @@ class DownlyViewModel : ViewModel() {
             try {
                 val source = File(prompt.sourcePath)
                 if (replaceExisting) {
+                    mutate { copy(duplicateReplacementInProgress = true, message = "Replacing existing file…") }
                     val publicPath = replaceMediaStoreItem(context, Uri.parse(prompt.existingUri), source, prompt.existingPath)
                     source.delete()
-                    setRecord(prompt.recordId) {
-                        copy(status = DownloadStatus.COMPLETE, progress = 1f,
-                            detail = "Download complete · replaced existing file", filePath = publicPath)
+                    val replacement = _state.value.history.firstOrNull { it.id == prompt.recordId }
+                        ?.copy(
+                            status = DownloadStatus.COMPLETE,
+                            progress = 1f,
+                            detail = "Download complete · replaced existing file",
+                            filePath = publicPath
+                        )
+                    if (replacement != null) {
+                        mutate {
+                            copy(
+                                history = reconcileReplacedHistory(history.map { if (it.id == replacement.id) replacement else it }, replacement, publicPath),
+                                duplicatePrompt = null,
+                                duplicateReplacementInProgress = false,
+                                message = "Existing file replaced"
+                            )
+                        }
+                        clearDuplicatePrompt(context)
+                    } else {
+                        mutate { copy(duplicatePrompt = null, duplicateReplacementInProgress = false, message = "Existing file replaced") }
+                        clearDuplicatePrompt(context)
                     }
-                    mutate { copy(duplicatePrompt = null, message = "Existing file replaced") }
                 } else {
                     source.delete()
                     setRecord(prompt.recordId) {
                         copy(status = DownloadStatus.COMPLETE, progress = 1f,
                             detail = "Already downloaded · kept existing file", filePath = prompt.existingPath)
                     }
-                    mutate { copy(duplicatePrompt = null, message = "Kept the existing download") }
+                    mutate { copy(duplicatePrompt = null, duplicateReplacementInProgress = false, message = "Kept the existing download") }
+                    clearDuplicatePrompt(context)
                 }
             } catch (error: Exception) {
-                mutate { copy(duplicatePrompt = null, message = friendlyError(error)) }
+                mutate { copy(duplicatePrompt = null, duplicateReplacementInProgress = false, message = friendlyError(error)) }
                 setRecord(prompt.recordId) { copy(status = DownloadStatus.FAILED, detail = friendlyError(error)) }
+                clearDuplicatePrompt(context)
             } finally {
                 appContext?.let { persistHistory(it) }
             }
@@ -779,6 +808,34 @@ class DownlyViewModel : ViewModel() {
         }
     }
 
+    private fun persistDuplicatePrompt(context: Context, prompt: DuplicateDownloadPrompt) {
+        context.getSharedPreferences("downly-history", Context.MODE_PRIVATE).edit()
+            .putString("duplicate_prompt", listOf(
+                prompt.recordId, prompt.sourcePath, prompt.existingUri, prompt.existingPath,
+                prompt.mode.name, prompt.fileName
+            ).joinToString("|") { encodeText(it) })
+            .apply()
+    }
+
+    private fun clearDuplicatePrompt(context: Context) {
+        context.getSharedPreferences("downly-history", Context.MODE_PRIVATE).edit()
+            .remove("duplicate_prompt").apply()
+    }
+
+    private fun readDuplicatePrompt(context: Context): DuplicateDownloadPrompt? {
+        val encoded = context.getSharedPreferences("downly-history", Context.MODE_PRIVATE)
+            .getString("duplicate_prompt", null) ?: return null
+        val parts = encoded.split('|')
+        if (parts.size != 6) return null
+        return runCatching {
+            DuplicateDownloadPrompt(
+                recordId = decodeText(parts[0]), sourcePath = decodeText(parts[1]),
+                existingUri = decodeText(parts[2]), existingPath = decodeText(parts[3]),
+                mode = MediaMode.valueOf(decodeText(parts[4])), fileName = decodeText(parts[5])
+            )
+        }.getOrNull()
+    }
+
     private fun encodeHistory(snapshot: List<DownloadRecord>): String = snapshot.joinToString("\n") { item ->
             listOf(item.id, encodeText(item.url), encodeText(item.title), item.status.name,
                 item.progress.toString(), encodeText(item.detail), item.filePath?.let(::encodeText) ?: "-",
@@ -788,7 +845,13 @@ class DownlyViewModel : ViewModel() {
     private fun reloadRecordFromWorker(id: String) {
         val context = appContext ?: return
         val updated = readHistory(context).firstOrNull { it.id == id } ?: return
-        mutate { copy(history = history.map { if (it.id == id) updated else it }) }
+        val restoredPrompt = duplicatePromptForHistory(readHistory(context), readDuplicatePrompt(context))
+        mutate {
+            copy(
+                history = history.map { if (it.id == id) updated else it },
+                duplicatePrompt = restoredPrompt
+            )
+        }
     }
 
     private fun setRecord(id: String, change: DownloadRecord.() -> DownloadRecord) {

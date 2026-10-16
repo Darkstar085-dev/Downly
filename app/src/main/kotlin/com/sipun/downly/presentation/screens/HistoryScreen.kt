@@ -55,6 +55,7 @@ import com.sipun.downly.data.DownloadRecord
 import com.sipun.downly.data.DownloadStatus
 import com.sipun.downly.data.ScreenState
 import com.sipun.downly.presentation.DownlyViewModel
+import com.sipun.downly.utils.downloadTotalSize
 import com.sipun.downly.presentation.theme.DownlyUiShapes
 import com.sipun.downly.presentation.theme.downlyCardBorder
 import java.text.DateFormat
@@ -261,7 +262,11 @@ fun DownloadCard(record: DownloadRecord, vm: DownlyViewModel) {
                     Text(details.fileType.ifBlank { if (audio) stringResource(R.string.media_mp3) else stringResource(R.string.media_video) }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.width(4.dp))
                     Icon(Icons.Rounded.Storage, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                    Text(details.size, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        details.size.takeIf { it != "—" } ?: downloadTotalSize(record.detail) ?: "—",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Rounded.CalendarMonth, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))

@@ -21,11 +21,14 @@ import com.sipun.downly.data.MediaPreview
 import com.sipun.downly.data.ScreenState
 import com.sipun.downly.utils.buildMediaOptions
 import com.sipun.downly.utils.decodeText
+import com.sipun.downly.utils.downloadQualityTag
+import com.sipun.downly.utils.downloadFilenameQuality
 import com.sipun.downly.utils.defaultQualityFor
 import com.sipun.downly.utils.encodeText
 import com.sipun.downly.utils.formatDuration
 import com.sipun.downly.utils.friendlyError
 import com.sipun.downly.utils.isValidUrl
+import com.sipun.downly.utils.mediaIdentityKey
 import com.sipun.downly.utils.recommendQuality
 import com.sipun.downly.utils.recommendAudioOption
 import com.sipun.youtubedl_android.YoutubeDL
@@ -374,16 +377,18 @@ class DownlyViewModel : ViewModel() {
                 .addOption("--no-playlist")
             if (mode == MediaMode.AUDIO) {
                 val audioFormatId = quality.takeIf { it.startsWith("audio:") }?.removePrefix("audio:")
-                if (!audioFormatId.isNullOrBlank()) request.addOption("-f", audioFormatId)
-                request.addOption("-x")
+                val formatSpec = if (!audioFormatId.isNullOrBlank()) "$audioFormatId/ba/b" else "ba/b"
+                request.addOption("-f", formatSpec)
+                    .addOption("-x")
                     .addOption("--audio-format", "mp3")
                     .addOption("--audio-quality", if (connectionType == "Mobile data") "5" else "0")
             } else {
                 val explicitSelector = quality.takeIf { it.startsWith("video:") }?.removePrefix("video:")
                 val maxHeight = quality.removeSuffix("p").toIntOrNull()
                 val format = explicitSelector?.takeIf { it.isNotBlank() }
-                    ?: if (maxHeight != null) "bv*[height<=$maxHeight]+ba/b[height<=$maxHeight]" else "bv*+ba/b"
+                    ?: if (maxHeight != null) "bv*[height<=$maxHeight]+ba/b[height<=$maxHeight]/bv*+ba/b" else "bv*+ba/b"
                 request.addOption("-f", format)
+                    .addOption("-S", "res,fps")
                     .addOption("--merge-output-format", "mp4")
             }
             if (cancelledIds.remove(record.id)) return
@@ -400,12 +405,13 @@ class DownlyViewModel : ViewModel() {
             }?.maxByOrNull { it.lastModified() }
                 ?: throw IOException("yt-dlp finished, but no completed output file was found in its download directory.")
             val mediaId = extractMediaId(saved.name)
-            val normalized = normalizeDownloadedFileName(saved, record.title)
+            val mediaIdentity = mediaId?.let { mediaIdentityKey(it, mode, quality) }
+            val normalized = normalizeDownloadedFileName(saved, record.title, mode, quality)
             val outputFile = if (normalized != saved.name) {
                 val renamed = File(saved.parentFile, normalized)
                 if (saved.renameTo(renamed)) renamed else saved
             } else saved
-            val duplicate = findExistingMedia(context, outputFile.name, mode, mediaId)
+            val duplicate = findExistingMedia(context, outputFile.name, mode, mediaIdentity)
             if (duplicate != null) {
                 mutate {
                     copy(
@@ -420,11 +426,11 @@ class DownlyViewModel : ViewModel() {
                         message = "This file is already downloaded. Choose whether to replace it."
                     )
                 }
-                if (mediaId != null) saveMediaIdMapping(context, mediaId, duplicate.first)
+                if (mediaIdentity != null) saveMediaIdMapping(context, mediaIdentity, duplicate.first)
                 setRecord(record.id) { copy(detail = "Waiting for duplicate choice…") }
                 return
             }
-            val publicPath = publishToMediaStore(context, outputFile, mode, mediaId)
+            val publicPath = publishToMediaStore(context, outputFile, mode, mediaIdentity)
             outputFile.delete()
             setRecord(record.id) {
                 copy(status = DownloadStatus.COMPLETE, progress = 1f, detail = "Download complete",
@@ -446,7 +452,7 @@ class DownlyViewModel : ViewModel() {
         }
     }
 
-    private fun normalizeDownloadedFileName(file: File, title: String): String {
+    private fun normalizeDownloadedFileName(file: File, title: String, mode: MediaMode, quality: String): String {
         val cleanTitle = title
             .replace(Regex("#[\\p{L}\\p{N}_-]+"), " ")
             .replace('_', ' ')
@@ -467,31 +473,30 @@ class DownlyViewModel : ViewModel() {
                     }
                 } else value
             }
-        return cleanTitle + "." + file.extension.lowercase().ifBlank { "mp4" }
+        return "$cleanTitle-${downloadFilenameQuality(mode, quality)}." + file.extension.lowercase().ifBlank { "mp4" }
     }
 
-    private fun findExistingMedia(context: Context, fileName: String, mode: MediaMode, mediaId: String?): Pair<Uri, String>? {
+    private fun findExistingMedia(context: Context, fileName: String, mode: MediaMode, identityKey: String?): Pair<Uri, String>? {
         val relativeDirectory = if (mode == MediaMode.AUDIO) {
             Environment.DIRECTORY_DOWNLOADS + "/Downly/Music/"
         } else {
             Environment.DIRECTORY_DOWNLOADS + "/Downly/Videos/"
         }
+        val altDirectory = relativeDirectory.trimEnd('/')
         val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
-        val knownUri = mediaId?.let { readMediaIdMapping(context, it) }
+        val knownUri = identityKey?.let { readMediaIdMapping(context, it) }
         val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME)
-        val selection = "${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
+        val selection = "${MediaStore.MediaColumns.RELATIVE_PATH} = ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
         context.contentResolver.query(
-            collection, projection, selection, arrayOf(relativeDirectory), null
+            collection, projection, selection, arrayOf(relativeDirectory, altDirectory), null
         )?.use { cursor ->
             while (cursor.moveToNext()) {
                 val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME))
                 val matchesName = name.equals(fileName, ignoreCase = true)
-                val existingMediaId = extractMediaId(name)
-                val matchesLegacyId = mediaId != null && existingMediaId.equals(mediaId, ignoreCase = true)
                 val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
                 val uri = ContentUris.withAppendedId(collection, id)
                 val matchesStoredId = knownUri != null && knownUri == uri.toString()
-                if (matchesName || matchesLegacyId || matchesStoredId) {
+                if (matchesName || matchesStoredId) {
                     return uri to (relativeDirectory + name)
                 }
             }
@@ -582,7 +587,7 @@ class DownlyViewModel : ViewModel() {
     }
 
 
-    private fun publishToMediaStore(context: Context, source: File, mode: MediaMode, mediaId: String?): String {
+    private fun publishToMediaStore(context: Context, source: File, mode: MediaMode, identityKey: String?): String {
         val resolver = context.contentResolver
         val relativeDirectory = if (mode == MediaMode.AUDIO) {
             Environment.DIRECTORY_DOWNLOADS + "/Downly/Music/"
@@ -618,7 +623,7 @@ class DownlyViewModel : ViewModel() {
             if (resolver.update(uri, publishedValues, null, null) <= 0) {
                 throw IOException("Could not publish the downloaded file.")
             }
-            if (!mediaId.isNullOrBlank()) saveMediaIdMapping(context, mediaId, uri)
+            if (!identityKey.isNullOrBlank()) saveMediaIdMapping(context, identityKey, uri)
             return relativeDirectory + source.name
         } catch (error: Exception) {
             resolver.delete(uri, null, null)

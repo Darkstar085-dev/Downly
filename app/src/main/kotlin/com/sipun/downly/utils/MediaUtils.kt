@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import com.sipun.downly.data.AudioOption
 import com.sipun.downly.data.MediaOptions
+import com.sipun.downly.data.MediaMode
 import com.sipun.downly.data.QualityOption
 import com.sipun.youtubedl_android.mapper.VideoFormat
 import java.util.Locale
@@ -13,13 +14,55 @@ import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-private val COMMON_VIDEO_RESOLUTIONS = listOf(4320, 2160, 1440, 1080, 720, 480, 360, 240)
 private val COMMON_AUDIO_BITRATES = listOf(320, 256, 192, 160, 128, 96, 64, 48, 32)
 
 fun commonVideoResolution(width: Int, height: Int): Int? {
     if (height <= 0) return null
     val effectiveResolution = minOf(width.takeIf { it > 0 } ?: height, height)
-    return COMMON_VIDEO_RESOLUTIONS.firstOrNull { effectiveResolution >= it }
+    return effectiveResolution.takeIf { it >= 240 }
+}
+
+private val GENERIC_VIDEO_QUALITIES = listOf(4320, 2160, 1440, 1080, 720, 480, 360, 240, 144)
+
+internal fun genericVideoFormatSelector(maxHeight: Int): String =
+    "bv*[height<=$maxHeight]+ba/b[height<=$maxHeight]/bv*+ba/b"
+
+fun genericVideoQualityHeights(availableHeights: List<Int>): List<Int> {
+    val usableHeights = availableHeights.filter { it >= 144 }
+    val maximumHeight = usableHeights.maxOrNull() ?: return emptyList()
+    val choices = GENERIC_VIDEO_QUALITIES.filter { it <= maximumHeight } +
+        listOfNotNull(maximumHeight.takeIf { it !in GENERIC_VIDEO_QUALITIES })
+    return choices.distinct()
+        .filter { cap -> usableHeights.any { it <= cap } }
+        .sortedDescending()
+}
+
+fun downloadQualityTag(mode: MediaMode, quality: String): String {
+    val selector = when {
+        quality.startsWith("video:") -> quality.removePrefix("video:")
+        quality.startsWith("audio:") -> quality.removePrefix("audio:")
+        else -> quality
+    }
+    val safeSelector = selector.lowercase()
+        .replace(Regex("[^a-z0-9]+"), "-")
+        .trim('-')
+        .take(48)
+        .trim('-')
+        .ifBlank { "default" }
+    return "${mode.name.lowercase()}-$safeSelector"
+}
+
+fun mediaIdentityKey(mediaId: String, mode: MediaMode, quality: String): String =
+    "$mediaId:${downloadQualityTag(mode, quality)}"
+
+fun downloadFilenameQuality(mode: MediaMode, quality: String): String {
+    if (mode == MediaMode.AUDIO) {
+        val formatId = quality.removePrefix("audio:").takeIf { it.isNotBlank() } ?: "audio"
+        return "audio-" + formatId.lowercase().replace(Regex("[^a-z0-9-]+"), "-").trim('-').ifBlank { "audio" }
+    }
+    val height = Regex("""height\s*<=\s*(\d+)""").find(quality)?.groupValues?.get(1)
+        ?: quality.removePrefix("video:").removeSuffix("p").toIntOrNull()?.toString()
+    return height?.let { "${it}p" } ?: "video"
 }
 
 fun commonAudioBitrate(bitrate: Int): Int? {
@@ -34,15 +77,28 @@ fun estimateBytesFromBitrate(bitrateKbps: Double, durationSeconds: Int): Long? {
         ?.toLong()
 }
 
+fun vcodecRank(vcodec: String?): Int {
+    val codec = vcodec?.lowercase().orEmpty()
+    return when {
+        codec.startsWith("av01") || codec.startsWith("av1") -> 4
+        codec.startsWith("vp09") || codec.startsWith("vp9") -> 3
+        codec.startsWith("avc1") || codec.startsWith("h264") -> 2
+        codec.isNotBlank() && codec != "none" -> 1
+        else -> 0
+    }
+}
+
+fun fpsRank(fps: Int): Int = fps.takeIf { it > 0 } ?: 0
+
 private fun fallbackVideoBitrateKbps(height: Int): Double = when {
-    height >= 4320 -> 40000.0
-    height >= 2160 -> 16000.0
-    height >= 1440 -> 10000.0
-    height >= 1080 -> 5000.0
-    height >= 720 -> 2500.0
-    height >= 480 -> 1200.0
-    height >= 360 -> 700.0
-    else -> 400.0
+    height >= 4320 -> 25000.0
+    height >= 2160 -> 8500.0
+    height >= 1440 -> 4800.0
+    height >= 1080 -> 2400.0
+    height >= 720 -> 1200.0
+    height >= 480 -> 600.0
+    height >= 360 -> 350.0
+    else -> 200.0
 }
 
 internal data class ResolvedFormatSize(val bytes: Long?, val approximate: Boolean)
@@ -58,6 +114,15 @@ internal fun resolveSizeValue(
     if (remoteSize != null && remoteSize > 0L) return ResolvedFormatSize(remoteSize, false)
     if (approximateSize > 0L) return ResolvedFormatSize(approximateSize, true)
     return ResolvedFormatSize(estimateBytesFromBitrate(bitrateKbps, durationSeconds), true)
+}
+
+internal fun estimateFormatBytes(
+    size: ResolvedFormatSize?,
+    bitrateKbps: Double,
+    durationSeconds: Int
+): Long? {
+    if (size?.bytes != null && size.bytes > 0L) return size.bytes
+    return estimateBytesFromBitrate(bitrateKbps, durationSeconds)
 }
 
 private fun probeRemoteFileSize(format: VideoFormat): Long? {
@@ -109,16 +174,19 @@ private fun resolveFormatSizes(formats: List<VideoFormat>, durationSeconds: Int)
         format.formatId?.takeIf { it.isNotBlank() }?.let { it to format }
     }.distinctBy { it.first }
     val results = identified.associate { (id, format) ->
+        val bitrate = (format.abr.takeIf { it > 0 }
+            ?: format.tbr.takeIf { it > 0 }
+            ?: fallbackVideoBitrateKbps(format.height)).toDouble()
         id to resolveSizeValue(
             fileSize = format.fileSize,
             remoteSize = null,
             approximateSize = format.fileSizeApproximate,
-            bitrateKbps = (format.abr.takeIf { it > 0 } ?: format.tbr).toDouble(),
+            bitrateKbps = bitrate,
             durationSeconds = durationSeconds
         )
     }.toMutableMap()
-    val needsProbe = identified.filter { (id, format) ->
-        results[id]?.approximate == true && format.fileSize <= 0L &&
+    val needsProbe = identified.filter { (_, format) ->
+        format.fileSize <= 0L && format.fileSizeApproximate <= 0L &&
             format.url?.startsWith("http") == true
     }
     if (needsProbe.isNotEmpty()) {
@@ -133,11 +201,14 @@ private fun resolveFormatSizes(formats: List<VideoFormat>, durationSeconds: Int)
                 }.getOrNull() else null
                 if (remoteSize != null && remoteSize > 0L) {
                     val format = identified.first { it.first == id }.second
+                    val bitrate = (format.abr.takeIf { it > 0 }
+                        ?: format.tbr.takeIf { it > 0 }
+                        ?: fallbackVideoBitrateKbps(format.height)).toDouble()
                     results[id] = resolveSizeValue(
                         fileSize = format.fileSize,
                         remoteSize = remoteSize,
                         approximateSize = format.fileSizeApproximate,
-                        bitrateKbps = (format.abr.takeIf { it > 0 } ?: format.tbr).toDouble(),
+                        bitrateKbps = bitrate,
                         durationSeconds = durationSeconds
                     )
                 } else {
@@ -151,11 +222,14 @@ private fun resolveFormatSizes(formats: List<VideoFormat>, durationSeconds: Int)
     identified.forEach { (id, format) ->
         val current = results[id]
         if (current == null || current.bytes == null) {
+            val bitrate = (format.abr.takeIf { it > 0 }
+                ?: format.tbr.takeIf { it > 0 }
+                ?: fallbackVideoBitrateKbps(format.height)).toDouble()
             results[id] = resolveSizeValue(
                 fileSize = format.fileSize,
                 remoteSize = null,
                 approximateSize = format.fileSizeApproximate,
-                bitrateKbps = (format.abr.takeIf { it > 0 } ?: format.tbr).toDouble(),
+                bitrateKbps = bitrate,
                 durationSeconds = durationSeconds
             )
         }
@@ -172,31 +246,43 @@ fun buildMediaOptions(formats: List<VideoFormat>, durationSeconds: Int = 0): Med
             .thenBy { it.fileSize.takeIf { size -> size > 0L } ?: it.fileSizeApproximate }
     )
     val bestAudioSize = bestAudio?.formatId?.let { sizes[it] }
+    val bestAudioBitrate = bestAudio?.let { (it.abr.takeIf { bitrate -> bitrate > 0 } ?: it.tbr).toDouble() } ?: 0.0
     val bestAudioBytes = bestAudioSize?.bytes ?: 0L
 
-    val qualityOptions = videoFormats.mapNotNull { format ->
-        val resolution = commonVideoResolution(format.width, format.height) ?: return@mapNotNull null
+    val videoCandidates = videoFormats.mapNotNull { format ->
         val formatId = format.formatId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val resolution = minOf(format.width.takeIf { it > 0 } ?: format.height, format.height)
+            .takeIf { it >= 144 } ?: return@mapNotNull null
+        Triple(format, resolution, sizes[formatId])
+    }
+
+    val qualityOptions = genericVideoQualityHeights(videoCandidates.map { it.second }).mapNotNull { maxHeight ->
+        val selected = videoCandidates
+            .filter { it.second <= maxHeight }
+            .maxWithOrNull(
+                compareBy<Triple<VideoFormat, Int, ResolvedFormatSize?>> { it.second }
+                    .thenBy { vcodecRank(it.first.vcodec) }
+                    .thenBy { fpsRank(it.first.fps) }
+                    .thenBy { it.third?.bytes ?: 0L }
+                    .thenBy { it.first.tbr }
+            ) ?: return@mapNotNull null
+        val format = selected.first
         val isVideoOnly = format.acodec?.lowercase() == "none"
-        val formatSize = sizes[formatId]
-        val videoBytes = formatSize?.bytes ?: 0L
-        val totalBytes = if (isVideoOnly && bestAudioBytes > 0L) videoBytes + bestAudioBytes else videoBytes
-        val approximate = isVideoOnly || formatSize?.approximate != false
-        val selector = if (isVideoOnly) "$formatId+bestaudio/$formatId" else formatId
-        Triple(format, resolution, QualityOption(
-            quality = "${resolution}p",
-            height = resolution,
-            estimatedBytes = totalBytes.takeIf { it > 0L },
-            formatSelector = selector,
-            sizeIsApproximate = approximate
-        ))
-    }.groupBy { it.second }.mapNotNull { (_, candidates) ->
-        candidates.maxWithOrNull(
-            compareBy<Triple<VideoFormat, Int, QualityOption>> { minOf(it.first.width.takeIf { width -> width > 0 } ?: it.first.height, it.first.height) }
-                .thenBy { it.first.tbr }
-                .thenBy { it.first.fileSize.takeIf { size -> size > 0L } ?: it.first.fileSizeApproximate }
-        )?.third
-    }.sortedByDescending { it.height }
+        val videoBytes = estimateFormatBytes(selected.third, format.tbr.toDouble(), durationSeconds)
+        val audioBytes = estimateFormatBytes(bestAudioSize, bestAudioBitrate, durationSeconds)
+            ?: bestAudioBytes.takeIf { it > 0L }
+        val totalBytes = if (isVideoOnly) {
+            listOfNotNull(videoBytes, audioBytes).takeIf { it.isNotEmpty() }?.sum()
+        } else videoBytes
+
+        QualityOption(
+            quality = "${maxHeight}p",
+            height = maxHeight,
+            estimatedBytes = totalBytes?.takeIf { it > 0L },
+            formatSelector = genericVideoFormatSelector(maxHeight),
+            sizeIsApproximate = selected.third?.approximate == true || (isVideoOnly && bestAudioSize?.approximate == true)
+        )
+    }
 
     val audioOptions = audioFormats.mapNotNull { format ->
         val formatId = format.formatId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
@@ -208,8 +294,8 @@ fun buildMediaOptions(formats: List<VideoFormat>, durationSeconds: Int = 0): Med
             formatId = formatId,
             quality = "$commonBitrate kbps · $extension",
             bitrate = commonBitrate,
-            estimatedBytes = size?.bytes,
-            sizeIsApproximate = size?.approximate != false
+            estimatedBytes = size?.bytes?.takeIf { it > 0L } ?: estimateBytesFromBitrate(bitrate.toDouble(), durationSeconds),
+            sizeIsApproximate = size?.approximate ?: true
         ) to bitrate
     }.groupBy { it.first.bitrate }.mapNotNull { (_, options) ->
         options.maxWithOrNull(
@@ -242,11 +328,23 @@ fun recommendQuality(options: List<QualityOption>, connectionType: String): Stri
     return options.maxByOrNull { it.height }?.quality ?: defaultQualityFor(connectionType)
 }
 
+fun downloadTotalSize(detail: String): String? {
+    val match = Regex("""\bof\s+(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB|KiB|MiB|GiB|TiB)\b""", RegexOption.IGNORE_CASE)
+        .find(detail) ?: return null
+    val amount = match.groupValues[1]
+    val unit = match.groupValues[2]
+    return "$amount $unit"
+}
+
 fun formatBytes(bytes: Long): String = when {
-    bytes >= 1_000_000_000 -> String.format(Locale.US, "%.1f GB", bytes / 1_000_000_000.0)
-    bytes >= 1_000_000 -> String.format(Locale.US, "%.1f MB", bytes / 1_000_000.0)
-    bytes >= 1_000 -> String.format(Locale.US, "%.0f KB", bytes / 1_000.0)
-    else -> bytes.toString() + " B"
+    bytes >= 1_073_741_824L -> {
+        val gib = bytes / 1_073_741_824.0
+        if (gib >= 10.0) String.format(Locale.US, "%.1f GiB", gib)
+        else String.format(Locale.US, "%.2f GiB", gib)
+    }
+    bytes >= 1_048_576L -> String.format(Locale.US, "%.1f MiB", bytes / 1_048_576.0)
+    bytes >= 1024L -> String.format(Locale.US, "%.0f KiB", bytes / 1024.0)
+    else -> "$bytes B"
 }
 
 fun appContextOpen(intent: Intent) {

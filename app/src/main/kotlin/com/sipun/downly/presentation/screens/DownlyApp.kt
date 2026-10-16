@@ -173,12 +173,20 @@ fun DownlyApp(
     onNotificationUpdateRequestConsumed: () -> Unit = {},
     installUpdateRequested: Boolean = false,
     onInstallUpdateRequestConsumed: () -> Unit = {},
+    openHistoryRequested: Boolean = false,
+    onOpenHistoryRequestConsumed: () -> Unit = {},
 ) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
     var requestAnotherUpdateCheck by remember { mutableStateOf(false) }
     var showBatteryPrompt by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.attach(context) }
+    LaunchedEffect(openHistoryRequested) {
+        if (openHistoryRequested) {
+            vm.setTab(1)
+            onOpenHistoryRequestConsumed()
+        }
+    }
     LaunchedEffect(state.initialized) {
         if (state.initialized) {
             delay(4500)

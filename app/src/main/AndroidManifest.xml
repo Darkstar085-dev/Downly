@@ -32,6 +32,9 @@
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:stopWithTask="false"
             android:foregroundServiceType="dataSync" />
+        <receiver
+            android:name=".core.notification.DownloadNotificationActionReceiver"
+            android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

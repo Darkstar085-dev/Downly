@@ -15,7 +15,14 @@ import com.sipun.downly.R
 import com.sipun.downly.core.service.DownloadWorkManager
 
 object DownloadNotificationHelper {
-    private const val CHANNEL_ID = "media_downloads"
+    internal const val CHANNEL_ID = "media_downloads"
+    internal const val ACTION_PAUSE = "com.sipun.downly.action.PAUSE_DOWNLOAD"
+    internal const val ACTION_CANCEL = "com.sipun.downly.action.CANCEL_DOWNLOAD"
+    internal const val ACTION_REMOVE = "com.sipun.downly.action.REMOVE_DOWNLOAD"
+    internal const val EXTRA_NOTIFICATION_ID = "notification_id"
+    internal const val EXTRA_TITLE = "title"
+    internal const val EXTRA_DOWNLOAD_ID = "download_id"
+    internal const val EXTRA_OPEN_HISTORY = "open_history"
 
     fun createChannel(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -38,12 +45,25 @@ object DownloadNotificationHelper {
         notificationId: Int,
         title: String,
         percent: Int,
-        detail: String
+        detail: String,
+        downloadId: String? = null
     ) {
         createChannel(context)
         DownloadWorkManager.notifyProgress(notificationId, percent, detail)
         if (!canNotify(context)) return
 
+        context.getSystemService(NotificationManager::class.java)
+            .notify(notificationId, buildProgressNotification(context, notificationId, title, percent, detail, downloadId))
+    }
+
+    fun buildProgressNotification(
+        context: Context,
+        notificationId: Int,
+        title: String,
+        percent: Int,
+        detail: String,
+        downloadId: String? = null
+    ): android.app.Notification {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -53,19 +73,63 @@ object DownloadNotificationHelper {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
-            .setContentText(detail)
+            .setContentText(NotificationProgressFormatter.progressText(percent, detail))
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
             .setProgress(100, percent.coerceIn(0, 100), percent == 0)
+            .addAction(
+                android.R.drawable.ic_media_pause,
+                "Pause",
+                actionPendingIntent(context, ACTION_PAUSE, notificationId, title, downloadId)
+            )
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Cancel",
+                actionPendingIntent(context, ACTION_CANCEL, notificationId, title, downloadId)
+            )
 
-        context.getSystemService(NotificationManager::class.java)
-            .notify(notificationId, builder.build())
+        return builder.build()
+    }
+
+    fun showPaused(context: Context, notificationId: Int, title: String, downloadId: String?) {
+        if (!canNotify(context)) return
+        createChannel(context)
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_OPEN_HISTORY, true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText("Download paused")
+            .setContentIntent(pendingIntent)
+            .setOngoing(false)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Download paused"))
+            .addAction(
+                android.R.drawable.ic_media_play,
+                "Resume in app",
+                pendingIntent
+            )
+            .addAction(
+                android.R.drawable.ic_menu_delete,
+                "Remove",
+                actionPendingIntent(context, ACTION_REMOVE, notificationId, title, downloadId)
+            )
+        context.getSystemService(NotificationManager::class.java).notify(notificationId, builder.build())
     }
 
     fun showComplete(
@@ -143,4 +207,36 @@ object DownloadNotificationHelper {
                 context,
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
+
+    private fun actionPendingIntent(
+        context: Context,
+        action: String,
+        notificationId: Int,
+        title: String,
+        downloadId: String?
+    ): PendingIntent = PendingIntent.getBroadcast(
+        context,
+        notificationId xor action.hashCode(),
+        Intent(context, DownloadNotificationActionReceiver::class.java).apply {
+            this.action = action
+            putExtra(EXTRA_NOTIFICATION_ID, notificationId)
+            putExtra(EXTRA_TITLE, title)
+            putExtra(EXTRA_DOWNLOAD_ID, downloadId)
+        },
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+}
+
+internal object NotificationProgressFormatter {
+    fun progressText(
+        percent: Int,
+        detail: String,
+        speed: String? = null,
+        eta: String? = null
+    ): String = listOfNotNull(
+        "${percent.coerceIn(0, 100)}%",
+        detail.takeIf { it.isNotBlank() },
+        speed?.takeIf { it.isNotBlank() },
+        eta?.takeIf { it.isNotBlank() }?.let { "ETA $it" }
+    ).joinToString(" • ")
 }

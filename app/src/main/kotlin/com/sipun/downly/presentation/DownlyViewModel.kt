@@ -405,13 +405,14 @@ class DownlyViewModel : ViewModel() {
                 notifId,
                 record.title,
                 0,
-                "Starting download…"
+                "Starting download…",
+                record.id
             )
             YoutubeDL.execute(request, record.id) { percent, eta, line ->
                 val fraction = (percent / 100f).coerceIn(0f, 1f)
                 val cleanedLine = com.sipun.downly.utils.cleanYtDlpLine(line)
                 val detailText = cleanedLine.take(150).ifBlank { if (eta > 0) "About ${eta}s left" else "Downloading…" }
-                DownloadNotificationHelper.showProgress(context, notifId, record.title, percent.toInt(), detailText)
+                DownloadNotificationHelper.showProgress(context, notifId, record.title, percent.toInt(), detailText, record.id)
                 setRecord(record.id) {
                     copy(status = DownloadStatus.DOWNLOADING, progress = fraction,
                         detail = detailText)
@@ -458,14 +459,17 @@ class DownlyViewModel : ViewModel() {
         } catch (error: Exception) {
             val latest = _state.value.history.firstOrNull { it.id == record.id }
             val status = when {
-                pausedIds.remove(record.id) || latest?.status == DownloadStatus.PAUSED -> DownloadStatus.PAUSED
+                DownloadWorkManager.consumePauseRequest(record.id) ||
+                    pausedIds.remove(record.id) || latest?.status == DownloadStatus.PAUSED -> DownloadStatus.PAUSED
                 cancelledIds.remove(record.id) || latest?.status == DownloadStatus.CANCELLED ||
                     error is YoutubeDL.CanceledException -> DownloadStatus.CANCELLED
                 else -> DownloadStatus.FAILED
             }
             val notifId = record.id.hashCode()
             appContext?.let { ctx ->
-                if (status == DownloadStatus.CANCELLED || status == DownloadStatus.PAUSED) {
+                if (status == DownloadStatus.PAUSED) {
+                    DownloadNotificationHelper.showPaused(ctx, notifId, record.title, record.id)
+                } else if (status == DownloadStatus.CANCELLED) {
                     DownloadNotificationHelper.cancel(ctx, notifId)
                 } else {
                     DownloadNotificationHelper.showFailed(ctx, notifId, record.title, friendlyError(error))
@@ -659,6 +663,7 @@ class DownlyViewModel : ViewModel() {
     }
 
     fun pause(record: DownloadRecord) {
+        DownloadWorkManager.requestPause(record.id)
         appContext?.let { DownloadWorkManager.cancel(it, record.id) }
         appContext?.let { DownloadNotificationHelper.cancel(it, record.id.hashCode()) }
         val current = _state.value.history.firstOrNull { it.id == record.id } ?: return

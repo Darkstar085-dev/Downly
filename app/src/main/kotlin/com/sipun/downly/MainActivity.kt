@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.ContextCompat
 import com.sipun.downly.core.update.UpdateManager
 import com.sipun.downly.core.update.UpdateNotificationHelper
+import com.sipun.downly.core.notification.DownloadNotificationHelper
 import com.sipun.downly.presentation.screens.DownlyApp
 import com.sipun.downly.utils.DownlyContextRef
 
@@ -20,6 +21,7 @@ class MainActivity : ComponentActivity() {
     private val checkUpdatesRequested = mutableStateOf(false)
     private val notificationUpdateRequested = mutableStateOf(false)
     private val installUpdateRequested = mutableStateOf(false)
+    private val openHistoryRequested = mutableStateOf(false)
 
     private val notificationPermissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -31,6 +33,7 @@ class MainActivity : ComponentActivity() {
         DownlyContextRef.context = applicationContext
         UpdateNotificationHelper.createChannel(applicationContext)
         handleUpdateIntent(intent)
+        handleDownloadIntent(intent)
         requestNotificationPermissionIfNeeded()
         setContent {
             DownlyApp(
@@ -42,6 +45,8 @@ class MainActivity : ComponentActivity() {
                 },
                 installUpdateRequested = installUpdateRequested.value,
                 onInstallUpdateRequestConsumed = { installUpdateRequested.value = false },
+                openHistoryRequested = openHistoryRequested.value,
+                onOpenHistoryRequestConsumed = { openHistoryRequested.value = false },
             )
         }
     }
@@ -50,6 +55,14 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleUpdateIntent(intent)
+        handleDownloadIntent(intent)
+    }
+
+    private fun handleDownloadIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(DownloadNotificationHelper.EXTRA_OPEN_HISTORY, false) == true) {
+            openHistoryRequested.value = true
+            intent.removeExtra(DownloadNotificationHelper.EXTRA_OPEN_HISTORY)
+        }
     }
 
     private fun handleUpdateIntent(intent: Intent?) {

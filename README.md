@@ -34,7 +34,8 @@ Your personal media saver for Android.
 ## About
 
 Downly is an Android media downloader built with Kotlin and Jetpack Compose. Paste a supported
-media link, review the available video qualities or audio options, and save media to your device.
+media link, choose a video quality or audio option, and download media in the background with
+progress and controls available from Android notifications.
 
 ## Screenshots
 
@@ -73,17 +74,22 @@ media link, review the available video qualities or audio options, and save medi
 - Choose from available video quality options.
 - Use **Best quality** to select the highest available video resolution or audio bitrate.
 - Download audio using supported audio formats.
-- View download progress, completion, and error status.
-- Pause and retry downloads when supported by the download state.
+- Track queued, active, completed, and failed downloads in the app.
+- Continue downloads in the background and monitor progress from Android notifications.
+- Pause or cancel active downloads from notifications, and resume paused downloads in the app.
+- Use format fallbacks when a preferred audio or video format is unavailable.
+- See reported file sizes and quality-specific filenames for downloaded media.
+- Get battery-optimization guidance to help background downloads run reliably.
 
 ### Download History
 
 - Keep a local history of downloads.
-- Search downloaded items and filter between all items, videos, and audio.
-- View media details such as file type, size, and date.
-- Open a completed file in its folder or play it with a compatible app.
-- Detect duplicate downloads using media IDs, including legacy and numbered filenames.
-- Replace duplicate media with safeguards that preserve the existing file if replacement fails.
+- Filter download history by all items, videos, or audio.
+- View media details such as file type, size, and download date.
+- Open a completed file or play it with a compatible app.
+- Detect duplicate downloads and choose whether to keep the existing file or replace it.
+- Restore pending duplicate choices after app recreation and reconcile history when a file is replaced.
+- Protect the existing file if replacement fails.
 - Clear finished and failed records.
 
 ### Personalization
@@ -117,7 +123,7 @@ The interface focuses on:
 - Readable typography and a clear visual hierarchy.
 - Rounded surfaces and theme-aware colors.
 - Straightforward video and audio choices.
-- A compact, searchable download history.
+- A compact download history with media filters and clear file details.
 - Android-native navigation, permissions, and update installation.
 
 ---

@@ -87,6 +87,7 @@ class DownloadWorker(
 ) : CoroutineWorker(appContext, workerParams) {
     override suspend fun getForegroundInfo(): ForegroundInfo {
         val id = inputData.getString(ID_KEY).orEmpty()
+        DownloadNotificationHelper.createChannel(applicationContext)
         return ForegroundInfo(
             id.hashCode(),
             DownloadNotificationHelper.buildProgressNotification(
@@ -113,7 +114,9 @@ class DownloadWorker(
             mode = mode,
             quality = inputData.getString(QUALITY_KEY).orEmpty()
         )
-        setForeground(getForegroundInfo())
+        runCatching {
+            setForeground(getForegroundInfo())
+        }
 
         val viewModel = DownlyViewModel()
         viewModel.attach(applicationContext, observeDownloadCompletion = false)

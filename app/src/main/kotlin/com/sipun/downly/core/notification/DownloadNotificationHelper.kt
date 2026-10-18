@@ -52,8 +52,10 @@ object DownloadNotificationHelper {
         DownloadWorkManager.notifyProgress(notificationId, percent, detail)
         if (!canNotify(context)) return
 
-        context.getSystemService(NotificationManager::class.java)
-            .notify(notificationId, buildProgressNotification(context, notificationId, title, percent, detail, downloadId))
+        runCatching {
+            context.getSystemService(NotificationManager::class.java)
+                .notify(notificationId, buildProgressNotification(context, notificationId, title, percent, detail, downloadId))
+        }
     }
 
     fun buildProgressNotification(
@@ -129,7 +131,9 @@ object DownloadNotificationHelper {
                 "Remove",
                 actionPendingIntent(context, ACTION_REMOVE, notificationId, title, downloadId)
             )
-        context.getSystemService(NotificationManager::class.java).notify(notificationId, builder.build())
+        runCatching {
+            context.getSystemService(NotificationManager::class.java).notify(notificationId, builder.build())
+        }
     }
 
     fun showComplete(
@@ -159,8 +163,10 @@ object DownloadNotificationHelper {
             .setOngoing(false)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
 
-        context.getSystemService(NotificationManager::class.java)
-            .notify(notificationId, builder.build())
+        runCatching {
+            context.getSystemService(NotificationManager::class.java)
+                .notify(notificationId, builder.build())
+        }
     }
 
     fun showFailed(
@@ -191,8 +197,10 @@ object DownloadNotificationHelper {
             .setOngoing(false)
             .setCategory(NotificationCompat.CATEGORY_ERROR)
 
-        context.getSystemService(NotificationManager::class.java)
-            .notify(notificationId, builder.build())
+        runCatching {
+            context.getSystemService(NotificationManager::class.java)
+                .notify(notificationId, builder.build())
+        }
     }
 
     fun cancel(context: Context, notificationId: Int) {
